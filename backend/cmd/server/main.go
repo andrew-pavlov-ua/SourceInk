@@ -60,10 +60,22 @@ func main() {
 		logger.Error("create HTTP server", "error", err)
 		os.Exit(1)
 	}
+	logger.Info("initial article sync started")
+	initialArticles, err := articlesWorker.SyncOnce(ctx)
+	if err != nil {
+		logger.Error("initial article sync failed", "error", err)
+	} else {
+		logger.Info("initial article sync completed", "articles", len(initialArticles))
+	}
+
 	go func() {
 		logger.Info("articles worker started")
-		if err := articlesWorker.Start(ctx); err != nil && ctx.Err() == nil {
-			logger.Error("articles worker stopped", "error", err)
+		for ctx.Err() == nil {
+			if err := articlesWorker.Start(ctx); err != nil && ctx.Err() == nil {
+				logger.Error("article sync failed; worker will retry", "error", err)
+				continue
+			}
+			return
 		}
 	}()
 

@@ -18,6 +18,14 @@ export type Repository = {
 
 export type ArticlePublishMode = "manual" | "automatic";
 
+type UnpublishedArticleFrontmatter = {
+  title?: string;
+  slug?: string;
+  description?: string;
+  tags?: string[] | null;
+  publish_mode?: ArticlePublishMode | "";
+};
+
 export type UnpublishedArticle = {
   id: string;
   repository_id: string;
@@ -97,7 +105,26 @@ export async function getArticles(cookieHeader: string): Promise<UserArticles> {
 
   const body: unknown = await response.json();
   if (!isUserArticles(body)) throw new Error("article lookup returned an invalid response");
-  return body;
+  return {
+    ...body,
+    unpublished_articles: body.unpublished_articles.map(normalizeUnpublishedArticle),
+  };
+}
+
+function normalizeUnpublishedArticle(article: UnpublishedArticle): UnpublishedArticle {
+  const responseArticle = article as UnpublishedArticle & {
+    frontmatter?: UnpublishedArticleFrontmatter;
+  };
+  const frontmatter = responseArticle.frontmatter;
+
+  return {
+    ...article,
+    title: frontmatter?.title ?? article.title ?? "",
+    slug: frontmatter?.slug ?? article.slug ?? "",
+    description: frontmatter?.description ?? article.description ?? "",
+    tags: frontmatter?.tags ?? article.tags ?? [],
+    publish_mode: frontmatter?.publish_mode ?? article.publish_mode ?? "",
+  };
 }
 
 function isUserArticles(value: unknown): value is UserArticles {
