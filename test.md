@@ -2,7 +2,7 @@
 title: "Test Document"
 slug: "joooou"
 description: "example description eshkere"
-publish_mode: manual
+publish_mode: "manual"
 ---
 
 Helloooooo my frineds
