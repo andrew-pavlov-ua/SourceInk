@@ -91,6 +91,12 @@ export function ArticleDiff({
         {patch.hunks.length > 0 ? (
           <table className="article-diff-table">
             <caption>Line-by-line changes from the published article to the repository draft.</caption>
+            <colgroup>
+              <col className="article-diff-column-number" />
+              <col className="article-diff-column-number" />
+              <col className="article-diff-column-marker" />
+              <col />
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col">Published line</th>
@@ -106,7 +112,7 @@ export function ArticleDiff({
             </tbody>
           </table>
         ) : (
-          <p className="article-diff-empty">The Git blob changed, but its parsed article content is identical.</p>
+          <p className="article-diff-empty">SourceInk found no parsed content changes in this Git blob.</p>
         )}
       </div>
     </div>

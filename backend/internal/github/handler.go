@@ -22,6 +22,7 @@ type Handler struct {
 	logger          *slog.Logger
 	installationURL string
 	repositoriesURL string
+	settingsURL     string
 	successURL      string
 	loginSuccessURL string
 	oauthAttempts   *oauthAttemptCache
@@ -39,6 +40,7 @@ func NewHandler(service *Service, appSlug, appOrigin, githubClientID, oauthCallb
 		cookieSecure:     cookieSecure,
 		installationURL:  "https://github.com/apps/" + url.PathEscape(appSlug) + "/installations/new",
 		repositoriesURL:  repositoriesURL,
+		settingsURL:      strings.TrimRight(appOrigin, "/") + "/dashboard/settings",
 		successURL:       repositoriesURL + "?github=connected",
 		loginSuccessURL:  strings.TrimRight(appOrigin, "/") + "/dashboard",
 		oauthAttempts:    newOAuthAttemptCache(),
@@ -87,8 +89,8 @@ func installationConfigurationURL(installation model.GitHubInstallation) (string
 	}
 }
 
-// SetupInstallation receives GitHub's App setup redirect. OAuth must confirm
-// that the signed-in GitHub user can access the installation ID.
+// SetupInstallation handles GitHub's post-install redirect. OAuth confirms the
+// signed-in user can access that installation.
 func (h *Handler) SetupInstallation(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.currentUser(w, r)
 	if !ok {
@@ -102,10 +104,23 @@ func (h *Handler) SetupInstallation(w http.ResponseWriter, r *http.Request) {
 	h.redirectToAuth(w, r, user.ID, installationID, oauthPurposeConnectInstallation)
 }
 
-// LoginRedirect starts GitHub OAuth without a SourceInk session. A short-lived,
-// single-use state value binds the callback to this attempt.
+// LoginRedirect starts GitHub OAuth without a SourceInk session. State binds
+// the callback to this short-lived attempt.
 func (h *Handler) LoginRedirect(w http.ResponseWriter, r *http.Request) {
 	h.redirectToAuth(w, r, "", 0, oauthPurposeLogin)
+}
+
+// ConnectAccountRedirect links GitHub to the signed-in SourceInk account.
+func (h *Handler) ConnectAccountRedirect(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.currentUser(w, r)
+	if !ok {
+		return
+	}
+	if user.GitHubUserID != nil {
+		http.Redirect(w, r, h.settingsURL+"?github=already-connected", http.StatusFound)
+		return
+	}
+	h.redirectToAuth(w, r, user.ID, 0, oauthPurposeConnectAccount)
 }
 
 func (h *Handler) currentUser(w http.ResponseWriter, r *http.Request) (model.User, bool) {
@@ -165,7 +180,7 @@ func (h *Handler) redirectToAuth(w http.ResponseWriter, r *http.Request, userID 
 	query.Set("state", state)
 	query.Set("code_challenge", pkceChallenge(verifier))
 	query.Set("code_challenge_method", "S256")
-	if purpose == oauthPurposeLogin {
+	if purpose == oauthPurposeLogin || purpose == oauthPurposeConnectAccount {
 		query.Set("scope", "read:user")
 	}
 	authorizeURL.RawQuery = query.Encode()
@@ -201,6 +216,23 @@ func (h *Handler) ValidateOAuthCallback(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		h.logger.Error("exchange GitHub OAuth code", "error", err)
 		writeError(w, http.StatusBadGateway, "GitHub authorization failed")
+		return
+	}
+	if attempt.purpose == oauthPurposeConnectAccount {
+		_, err = h.service.LinkGitHubUser(r.Context(), user.ID, userToken)
+		switch {
+		case errors.Is(err, model.ErrGitHubAccountConflict):
+			http.Redirect(w, r, h.settingsURL+"?github=conflict", http.StatusFound)
+		case err != nil:
+			h.logger.Error("connect GitHub account", "error", err, "user_id", user.ID)
+			http.Redirect(w, r, h.settingsURL+"?github=failed", http.StatusFound)
+		default:
+			http.Redirect(w, r, h.settingsURL+"?github=connected", http.StatusFound)
+		}
+		return
+	}
+	if attempt.purpose != oauthPurposeConnectInstallation {
+		writeError(w, http.StatusBadRequest, "invalid GitHub authorization response")
 		return
 	}
 	canAccess, err := h.service.UserCanAccessInstallation(r.Context(), userToken, attempt.pendingInstallationID)

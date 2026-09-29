@@ -12,6 +12,7 @@ const allowedPaths = new Set([
   "articles",
   "published-articles",
   "github/install",
+  "github/connect",
   "github/setup",
   "github/callback",
 ]);

@@ -68,6 +68,29 @@ func (w *ArticlesWorker) SyncOnce(ctx context.Context) ([]model.UnpublishedArtic
 	if err := w.service.save(ctx, unpublishedArticles); err != nil {
 		return nil, fmt.Errorf("save unpublished articles: %w", err)
 	}
+	if err := w.service.store.ReconcileDuplicateSlugs(ctx); err != nil {
+		return nil, fmt.Errorf("validate article slugs: %w", err)
+	}
+	if err := w.AutoPublishArticles(ctx, unpublishedArticles); err != nil {
+		return nil, err
+	}
 
 	return unpublishedArticles, nil
+}
+
+func (w *ArticlesWorker) AutoPublishArticles(ctx context.Context, unpublishedArticles []model.UnpublishedArticle) error {
+	for _, article := range unpublishedArticles {
+		if article.ValidationError != nil {
+			continue
+		}
+
+		if article.Frontmatter.PublishMode == string(model.ArticlePublishModeAuto) {
+			_, err := w.service.AutoPublishArticle(ctx, article.ID)
+			if err != nil {
+				return fmt.Errorf("auto-publish article %s: %w", article.ID, err)
+			}
+		}
+	}
+
+	return nil
 }

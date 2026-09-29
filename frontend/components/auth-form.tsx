@@ -49,7 +49,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   function beginGitHubLogin() {
     setError("");
     setPendingAction("github");
-    // OAuth must leave the Next.js app instead of requesting an RSC payload.
+    // GitHub OAuth needs a full page navigation, not an RSC request.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/api/auth/github");
   }

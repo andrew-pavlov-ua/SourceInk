@@ -13,6 +13,7 @@ type installationStore interface {
 	UserBySession(ctx context.Context, tokenHash []byte) (model.User, error)
 	InstallationForUser(ctx context.Context, userID string) (model.GitHubInstallation, error)
 	SaveInstallation(ctx context.Context, userID string, installation model.GitHubInstallation) error
+	LinkGitHubUser(ctx context.Context, userID string, githubUser model.GitHubUser) (model.User, error)
 	FindOrCreateUserByGitHub(ctx context.Context, githubUser model.GitHubUser, tokenHash []byte, expiresAt time.Time) (model.User, error)
 }
 
@@ -88,4 +89,12 @@ func (s *Service) LoginWithGitHub(ctx context.Context, userToken string, tokenHa
 		return model.User{}, err
 	}
 	return s.store.FindOrCreateUserByGitHub(ctx, githubUser, tokenHash, expiresAt)
+}
+
+func (s *Service) LinkGitHubUser(ctx context.Context, userID, userToken string) (model.User, error) {
+	githubUser, err := s.client.GetUser(ctx, userToken)
+	if err != nil {
+		return model.User{}, err
+	}
+	return s.store.LinkGitHubUser(ctx, userID, githubUser)
 }

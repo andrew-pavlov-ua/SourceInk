@@ -61,7 +61,10 @@ export default async function DashboardPage() {
                 <div className="article-table-head" aria-hidden="true"><span>Article</span><span>Source</span><span>Mode</span><span>State</span></div>
                 {unpublishedArticles.map((article) => (
                   <Link className="article-row" href={`/dashboard/articles/${encodeURIComponent(article.id)}`} key={article.id} aria-label={`Inspect ${articleTitle(article)}`}>
-                    <div><strong>{articleTitle(article)}</strong><p>{article.description || "No description in frontmatter"}</p></div>
+                    <div>
+                      <strong>{articleTitle(article)}</strong>
+                      <p>{article.validation_error ? `Frontmatter error: ${article.validation_error}` : article.description || "No description in frontmatter"}</p>
+                    </div>
                     <code>{article.source_path}</code>
                     <span>{article.publish_mode || "Not set"}</span>
                     <span className={article.validation_error ? "article-state article-state-error" : "article-state"}>{article.validation_error ? "Needs attention" : "Draft"}</span>

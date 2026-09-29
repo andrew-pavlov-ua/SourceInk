@@ -89,8 +89,8 @@ type blobResponse struct {
 	Content  string `json:"content"`
 }
 
-// NewClient creates a GitHub App client. appJWT must create a fresh JWT for
-// each request because GitHub App JWTs are short-lived.
+// NewClient builds a GitHub App client. GitHub expires App JWTs quickly, so
+// appJWT signs a new one for each request.
 func NewClient(cfg ClientConfig) (*GitHubClient, error) {
 	if cfg.AppJWT == nil {
 		return nil, errors.New("github app JWT generator is required")
@@ -114,8 +114,8 @@ func NewClient(cfg ClientConfig) (*GitHubClient, error) {
 	}, nil
 }
 
-// GetInstallation verifies that this GitHub App owns the installation. Use
-// UserCanAccessInstallation to check a GitHub user's access.
+// GetInstallation checks that this App owns the installation. User access is
+// checked separately by UserCanAccessInstallation.
 func (g *GitHubClient) GetInstallation(ctx context.Context, installationID int64) (*model.GitHubInstallation, error) {
 	installationExists, err := g.installationExists(ctx, installationID)
 	if err != nil {

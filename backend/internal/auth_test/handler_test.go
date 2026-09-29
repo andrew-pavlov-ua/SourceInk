@@ -23,6 +23,7 @@ type fakeAccountStore struct {
 	createSessionErr     error
 	sessionUserErr       error
 	deleteSessionErr     error
+	createdSessionUserID string
 	createdSessionHash   []byte
 	loadedSessionHash    []byte
 	deletedSessionHash   []byte
@@ -51,7 +52,8 @@ func (s *fakeAccountStore) FindUserByEmail(context.Context, string) (model.User,
 	return s.user, s.passwordHash, s.findUserErr
 }
 
-func (s *fakeAccountStore) CreateSession(_ context.Context, _ string, tokenHash []byte, _ time.Time) error {
+func (s *fakeAccountStore) CreateSession(_ context.Context, userID string, tokenHash []byte, _ time.Time) error {
+	s.createdSessionUserID = userID
 	s.createdSessionHash = tokenHash
 	return s.createSessionErr
 }
@@ -151,6 +153,38 @@ func TestLoginUsesSafeSessionCookie(t *testing.T) {
 	}
 	if string(store.createdSessionHash) != string(auth.SessionTokenHash(cookie.Value)) {
 		t.Fatal("login stored a token hash that does not match the session cookie")
+	}
+}
+
+func TestLoginUsesTheSameAccountAfterGitHubIsLinked(t *testing.T) {
+	passwordHash, err := auth.HashPassword("correct horse battery staple")
+	if err != nil {
+		t.Fatalf("HashPassword() error = %v", err)
+	}
+	githubUserID := int64(12345)
+	store := &fakeAccountStore{
+		user: model.User{
+			ID:           "linked-user",
+			Email:        "writer@example.com",
+			Username:     "writer",
+			GitHubUserID: &githubUserID,
+		},
+		passwordHash: passwordHash,
+	}
+	handler := newTestHandler(t, store, false)
+	recorder := httptest.NewRecorder()
+
+	handler.Login(recorder, jsonRequest(
+		http.MethodPost,
+		"/api/auth/login",
+		`{"email":"writer@example.com","password":"correct horse battery staple"}`,
+	))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("Login() status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if store.createdSessionUserID != "linked-user" {
+		t.Fatalf("session user = %q, want linked-user", store.createdSessionUserID)
 	}
 }
 

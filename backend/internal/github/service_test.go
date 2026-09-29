@@ -17,6 +17,10 @@ type serviceTestStore struct {
 	savedUserID  string
 	installation model.GitHubInstallation
 	saveErr      error
+	linked       bool
+	linkedUserID string
+	linkedGitHub model.GitHubUser
+	linkErr      error
 }
 
 func (s *serviceTestStore) UserBySession(context.Context, []byte) (model.User, error) {
@@ -37,6 +41,13 @@ func (s *serviceTestStore) SaveInstallation(_ context.Context, userID string, in
 	return s.saveErr
 }
 
+func (s *serviceTestStore) LinkGitHubUser(_ context.Context, userID string, githubUser model.GitHubUser) (model.User, error) {
+	s.linked = true
+	s.linkedUserID = userID
+	s.linkedGitHub = githubUser
+	return s.user, s.linkErr
+}
+
 func (s *serviceTestStore) FindOrCreateUserByGitHub(_ context.Context, _ model.GitHubUser, _ []byte, _ time.Time) (model.User, error) {
 	return s.user, s.userErr
 }
@@ -53,6 +64,8 @@ type serviceTestClient struct {
 	exchangeVerifier     string
 	accessToken          string
 	accessInstallationID int64
+	githubUser           model.GitHubUser
+	githubUserErr        error
 }
 
 func (c *serviceTestClient) GetInstallation(_ context.Context, installationID int64) (*model.GitHubInstallation, error) {
@@ -73,7 +86,10 @@ func (c *serviceTestClient) UserCanAccessInstallation(_ context.Context, token s
 }
 
 func (c *serviceTestClient) GetUser(context.Context, string) (model.GitHubUser, error) {
-	return model.GitHubUser{ID: 9, Login: "octocat"}, nil
+	if c.githubUser.ID == 0 {
+		c.githubUser = model.GitHubUser{ID: 9, Login: "octocat"}
+	}
+	return c.githubUser, c.githubUserErr
 }
 
 func TestConnectInstallationChecksGitHubBeforeSaving(t *testing.T) {
@@ -137,5 +153,21 @@ func TestRefreshInstallationForUserSkipsUsersWithoutInstallation(t *testing.T) {
 	}
 	if client.getInstallationID != 0 || store.saved {
 		t.Fatalf("requested installation = %d, saved = %t", client.getInstallationID, store.saved)
+	}
+}
+
+func TestLinkGitHubUserUsesVerifiedGitHubIdentity(t *testing.T) {
+	store := &serviceTestStore{user: model.User{ID: "email-user"}}
+	client := &serviceTestClient{
+		userToken:  "user-token",
+		githubUser: model.GitHubUser{ID: 9, Login: "octocat", AvatarURL: "https://example.com/avatar.png"},
+	}
+	service := NewService(store, client)
+
+	if _, err := service.LinkGitHubUser(context.Background(), "email-user", "user-token"); err != nil {
+		t.Fatalf("LinkGitHubUser() error = %v", err)
+	}
+	if !store.linked || store.linkedUserID != "email-user" || store.linkedGitHub.ID != 9 {
+		t.Fatalf("linked = %t, user = %q, GitHub user = %#v", store.linked, store.linkedUserID, store.linkedGitHub)
 	}
 }

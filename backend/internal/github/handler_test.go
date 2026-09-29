@@ -160,6 +160,36 @@ func TestGitHubLoginCreatesSessionWithoutExistingSourceInkSession(t *testing.T) 
 	}
 }
 
+func TestConnectAccountLinksGitHubToSignedInUser(t *testing.T) {
+	store := &serviceTestStore{user: model.User{ID: "email-user", Email: "writer@example.com", Username: "writer"}}
+	client := &serviceTestClient{userToken: "user-token"}
+	handler := newTestHandler(store, client)
+
+	startRequest := httptest.NewRequest(http.MethodGet, "/api/github/connect", nil)
+	startRequest.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "session-token"})
+	start := httptest.NewRecorder()
+	handler.ConnectAccountRedirect(start, startRequest)
+	if start.Code != http.StatusFound {
+		t.Fatalf("start status = %d, body = %s", start.Code, start.Body.String())
+	}
+	state := mustRedirectURL(t, start).Query().Get("state")
+
+	callbackRequest := httptest.NewRequest(http.MethodGet, "/api/github/callback?code=code-value&state="+url.QueryEscape(state), nil)
+	callbackRequest.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "session-token"})
+	callback := httptest.NewRecorder()
+	handler.ValidateOAuthCallback(callback, callbackRequest)
+
+	if callback.Code != http.StatusFound {
+		t.Fatalf("callback status = %d, body = %s", callback.Code, callback.Body.String())
+	}
+	if callback.Header().Get("Location") != "http://localhost:3000/dashboard/settings?github=connected" {
+		t.Fatalf("location = %q", callback.Header().Get("Location"))
+	}
+	if !store.linked || store.linkedUserID != "email-user" || store.linkedGitHub.ID != 9 {
+		t.Fatalf("linked = %t, user = %q, GitHub user = %#v", store.linked, store.linkedUserID, store.linkedGitHub)
+	}
+}
+
 func TestGitHubLoginRefreshesExistingInstallation(t *testing.T) {
 	store := &serviceTestStore{
 		user: model.User{ID: "user-id", Username: "octocat"},

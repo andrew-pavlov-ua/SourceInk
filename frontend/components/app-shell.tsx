@@ -6,11 +6,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 type AppShellProps = {
   username: string;
-  repository: string;
   children: ReactNode;
 };
 
-export function AppShell({ username, repository, children }: AppShellProps) {
+export function AppShell({ username, children }: AppShellProps) {
   return (
     <main id="main-content" className="app-shell">
       <header className="app-topbar">
@@ -29,19 +28,6 @@ export function AppShell({ username, repository, children }: AppShellProps) {
       </header>
 
       <div className="app-frame">
-        <div className="app-context">
-          <nav className="breadcrumbs" aria-label="Breadcrumb">
-            <Link href="/dashboard">Repositories</Link>
-            <span aria-hidden="true">/</span>
-            <span>{repository.replace("github.com/", "")}</span>
-          </nav>
-          <button className="repository-selector" type="button" disabled aria-label={`Repository selector: ${repository}`}>
-            <span className="repository-selector-label">Repository</span>
-            <strong>{repository}</strong>
-            <span aria-hidden="true">⌄</span>
-          </button>
-        </div>
-
         <AppNavigation />
 
         <div className="app-content">{children}</div>

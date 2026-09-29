@@ -82,6 +82,7 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 		r.Get("/github", githubHandler.LoginRedirect)
 	})
 	router.Route("/api/github", func(r chi.Router) {
+		r.Get("/connect", githubHandler.ConnectAccountRedirect)
 		r.Get("/install", githubHandler.InstallationRedirect)
 		r.Get("/setup", githubHandler.SetupInstallation)
 		r.Get("/callback", githubHandler.ValidateOAuthCallback)

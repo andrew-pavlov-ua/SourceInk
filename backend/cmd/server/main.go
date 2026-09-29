@@ -54,6 +54,20 @@ func main() {
 	if cfg.Environment == "development" {
 		logger.Info("development admin ready", "email", cfg.DevAdminEmail, "username", cfg.DevAdminUsername)
 	}
+	if err := auth.EnsureDevelopmentUser(
+		ctx,
+		db,
+		cfg.Environment,
+		cfg.DevUserEmail,
+		cfg.DevUserUsername,
+		cfg.DevUserPassword,
+	); err != nil {
+		logger.Error("seed development user", "error", err)
+		os.Exit(1)
+	}
+	if cfg.Environment == "development" {
+		logger.Info("development user ready", "email", cfg.DevUserEmail, "username", cfg.DevUserUsername)
+	}
 
 	handler, articlesWorker, err := httpserver.New(cfg, db, logger)
 	if err != nil {

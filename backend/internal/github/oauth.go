@@ -29,10 +29,10 @@ type oauthPurpose uint8
 const (
 	oauthPurposeConnectInstallation oauthPurpose = iota + 1
 	oauthPurposeLogin
+	oauthPurposeConnectAccount
 )
 
-// oauthAttemptCache keeps OAuth state in this process. It stores state hashes
-// instead of the values sent to GitHub.
+// oauthAttemptCache stores hashed OAuth state in this process.
 type oauthAttemptCache struct {
 	mu       sync.Mutex
 	attempts map[[sha256.Size]byte]oauthAttempt
@@ -55,8 +55,8 @@ func (c *oauthAttemptCache) Put(rawState string, attempt oauthAttempt, now time.
 	return nil
 }
 
-// Consume reads and deletes an attempt in one lock. GitHub authorization codes
-// are single-use, so a failed callback requires a new attempt.
+// Consume reads and removes an attempt under one lock. A GitHub authorization
+// code can only be used once.
 func (c *oauthAttemptCache) Consume(userID, rawState string, now time.Time) (oauthAttempt, error) {
 	stateHash := sha256.Sum256([]byte(rawState))
 

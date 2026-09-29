@@ -33,3 +33,13 @@ func TestParseFrontmatterAcceptsClosingDelimiterAtEndOfFile(t *testing.T) {
 		t.Fatalf("ParseFrontmatter() = %#v", parsed)
 	}
 }
+
+func TestParseFrontmatterAcceptsAutoPublishMode(t *testing.T) {
+	parsed, err := ParseFrontmatter("---\ntitle: Hello\nslug: hello\npublish_mode: auto\n---\n# Hello")
+	if err != nil {
+		t.Fatalf("ParseFrontmatter() error = %v", err)
+	}
+	if parsed.Frontmatter.PublishMode != "auto" {
+		t.Fatalf("publish mode = %q, want auto", parsed.Frontmatter.PublishMode)
+	}
+}

@@ -11,6 +11,7 @@ var (
 	ErrEmailTaken                 = errors.New("email is already registered")
 	ErrUsernameTaken              = errors.New("username is already registered")
 	ErrGitHubUsernameTaken        = errors.New("GitHub username is already connected to another account")
+	ErrGitHubAccountConflict      = errors.New("GitHub account is connected to another account")
 	ErrGitHubInstallationConflict = errors.New("github installation is connected to another user")
 	ErrArticleNotFound            = errors.New("article draft not found")
 	ErrArticleNotPublishable      = errors.New("article draft cannot be published")
@@ -85,8 +86,8 @@ type UnpublishedArticle struct {
 type ArticlePublishMode string
 
 const (
-	ArticlePublishModeManual    ArticlePublishMode = "manual"
-	ArticlePublishModeAutomatic ArticlePublishMode = "automatic"
+	ArticlePublishModeManual ArticlePublishMode = "manual"
+	ArticlePublishModeAuto   ArticlePublishMode = "auto"
 )
 
 type ArticleSourceState string

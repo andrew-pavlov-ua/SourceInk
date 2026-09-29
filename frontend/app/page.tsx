@@ -103,7 +103,6 @@ export default async function HomePage() {
           <Link className="button" href="/register">Create an account</Link>
         </section>
       </main>
-      <footer className="site-footer landing-frame"><span>© {new Date().getFullYear()} SourceInk</span><span>Git-first publishing for technical articles.</span></footer>
     </>
   );
 }

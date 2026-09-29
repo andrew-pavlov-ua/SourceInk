@@ -64,9 +64,9 @@ func ValidateFrontmatter(fm model.Frontmatter) error {
 	}
 
 	switch fm.PublishMode {
-	case "manual", "automatic":
+	case string(model.ArticlePublishModeManual), string(model.ArticlePublishModeAuto):
 	default:
-		return errors.New("publish_mode must be manual or automatic")
+		return errors.New("publish_mode must be manual or auto")
 	}
 
 	return nil

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jmoiron/sqlx"
 
 	"sourceink/backend/internal/model"
@@ -138,7 +139,7 @@ func (s *Store) FindUserByEmail(
 				created_at,
 				password_hash
 			from users
-			where lower(email) = lower($1) and github_user_id is null
+			where lower(email) = lower($1) and password_hash is not null
 		`,
 		email,
 	)
@@ -147,6 +148,102 @@ func (s *Store) FindUserByEmail(
 	}
 
 	return result.User, result.PasswordHash, nil
+}
+
+// LinkGitHubUser attaches a verified GitHub identity to an existing account.
+// When that identity belongs to a passwordless account, move its installations
+// and published articles into this account before removing the duplicate.
+func (s *Store) LinkGitHubUser(
+	ctx context.Context,
+	userID string,
+	githubUser model.GitHubUser,
+) (model.User, error) {
+	if userID == "" || githubUser.ID <= 0 || githubUser.Login == "" {
+		return model.User{}, errors.New("invalid GitHub account link")
+	}
+
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return model.User{}, fmt.Errorf("begin GitHub account link transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var user model.User
+	err = tx.GetContext(ctx, &user, `
+		select id, coalesce(email, '') as email, username, github_user_id,
+			coalesce(github_login, '') as github_login,
+			coalesce(github_avatar_url, '') as github_avatar_url, role, created_at
+		from users
+		where id = $1
+		for update
+	`, userID)
+	if err != nil {
+		return model.User{}, fmt.Errorf("find account for GitHub link: %w", err)
+	}
+	if user.GitHubUserID != nil && *user.GitHubUserID != githubUser.ID {
+		return model.User{}, model.ErrGitHubAccountConflict
+	}
+
+	var githubOnlyUser struct {
+		ID          string `db:"id"`
+		HasEmail    bool   `db:"has_email"`
+		HasPassword bool   `db:"has_password"`
+	}
+	err = tx.GetContext(ctx, &githubOnlyUser, `
+		select id, email is not null as has_email, password_hash is not null as has_password
+		from users
+		where github_user_id = $1 and id <> $2
+		for update
+	`, githubUser.ID, userID)
+	if err == nil {
+		if githubOnlyUser.HasEmail || githubOnlyUser.HasPassword {
+			return model.User{}, model.ErrGitHubAccountConflict
+		}
+		if _, err := tx.ExecContext(ctx, `
+			update github_installations set user_id = $1, updated_at = now() where user_id = $2
+		`, userID, githubOnlyUser.ID); err != nil {
+			return model.User{}, fmt.Errorf("move GitHub installations to linked account: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			update articles set owner_id = $1, updated_at = now() where owner_id = $2
+		`, userID, githubOnlyUser.ID); err != nil {
+			return model.User{}, fmt.Errorf("move articles to linked account: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `delete from users where id = $1`, githubOnlyUser.ID); err != nil {
+			return model.User{}, fmt.Errorf("remove merged GitHub-only account: %w", err)
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return model.User{}, fmt.Errorf("find existing GitHub account: %w", err)
+	}
+
+	err = tx.GetContext(ctx, &user, `
+		update users
+		set github_user_id = $2,
+			github_login = case
+				when not exists (
+					select 1 from users other
+					where lower(other.github_login) = lower($3) and other.id <> $1
+				) then $3
+				else null
+			end,
+			github_avatar_url = $4,
+			updated_at = now()
+		where id = $1
+		returning id, coalesce(email, '') as email, username, github_user_id,
+			coalesce(github_login, '') as github_login,
+			coalesce(github_avatar_url, '') as github_avatar_url, role, created_at
+	`, userID, githubUser.ID, githubUser.Login, githubUser.AvatarURL)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return model.User{}, model.ErrGitHubAccountConflict
+		}
+		return model.User{}, fmt.Errorf("link GitHub account: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return model.User{}, fmt.Errorf("commit GitHub account link: %w", err)
+	}
+	return user, nil
 }
 
 func (s *Store) FindOrCreateUserByGitHub(
@@ -268,8 +365,7 @@ func refreshGitHubIdentity(
 }
 
 func githubUsername(login string, id int64) string {
-	// GitHub logins are valid SourceInk handles. The suffix is only needed if a
-	// login exceeds the product's 32-character local handle limit.
+	// Keep the GitHub login unless it exceeds SourceInk's 32-character handle limit.
 	if len(login) <= 32 {
 		return login
 	}

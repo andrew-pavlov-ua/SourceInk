@@ -46,6 +46,52 @@ func TestSyncOnceDiscoversAndSavesArticles(t *testing.T) {
 	}
 }
 
+func TestSyncOnceAutomaticallyPublishesOnlyAutomaticDrafts(t *testing.T) {
+	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
+	store := &serviceTestStore{
+		syncRepositories:  []model.Repository{repository},
+		autoPublishDraft:  publishableDraft("auto"),
+		autoPublishResult: model.Article{ID: "article-id"},
+	}
+	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
+		repository.ID: {
+			{RepositoryID: repository.ID, SourcePath: "automatic.md", Frontmatter: model.Frontmatter{Title: "Automatic", Slug: "automatic", PublishMode: "auto"}, GitBlobSHA: "blob-sha", Present: true},
+			{RepositoryID: repository.ID, SourcePath: "manual.md", Frontmatter: model.Frontmatter{Title: "Manual", Slug: "manual", PublishMode: "manual"}, GitBlobSHA: "other-blob", Present: true},
+		},
+	}}
+	worker := NewArticlesWorker(NewService(store, loader))
+
+	if _, err := worker.SyncOnce(context.Background()); err != nil {
+		t.Fatalf("SyncOnce() error = %v", err)
+	}
+	if store.autoPublishCalls != 1 || store.autoPublishDraftID != "saved-automatic.md" {
+		t.Fatalf("auto-publish call = count:%d draft:%q", store.autoPublishCalls, store.autoPublishDraftID)
+	}
+	if store.reconcileCalls != 1 {
+		t.Fatalf("duplicate slug checks = %d, want 1", store.reconcileCalls)
+	}
+}
+
+func TestSyncOnceStopsBeforeAutoPublishWhenSlugValidationFails(t *testing.T) {
+	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
+	store := &serviceTestStore{
+		syncRepositories: []model.Repository{repository},
+		reconcileErr:     errors.New("duplicate slug validation failed"),
+	}
+	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
+		repository.ID: {{RepositoryID: repository.ID, SourcePath: "automatic.md", Frontmatter: model.Frontmatter{Title: "Automatic", Slug: "automatic", PublishMode: "auto"}}},
+	}}
+	worker := NewArticlesWorker(NewService(store, loader))
+
+	_, err := worker.SyncOnce(context.Background())
+	if err == nil || err.Error() != "validate article slugs: duplicate slug validation failed" {
+		t.Fatalf("SyncOnce() error = %v", err)
+	}
+	if store.autoPublishCalls != 0 {
+		t.Fatalf("auto-publish calls = %d, want 0", store.autoPublishCalls)
+	}
+}
+
 func TestRunOnIntervalReturnsRunError(t *testing.T) {
 	wantErr := errors.New("sync failed")
 	runs := 0

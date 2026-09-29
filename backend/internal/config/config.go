@@ -26,6 +26,9 @@ type Config struct {
 	DevAdminEmail    string
 	DevAdminUsername string
 	DevAdminPassword string
+	DevUserEmail     string
+	DevUserUsername  string
+	DevUserPassword  string
 
 	GitHubPublisherAppSlug      string
 	GitHubPublisherClientID     string
@@ -35,6 +38,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	devUserPassword := os.Getenv("DEV_USER_PASSWORD")
+	if devUserPassword == "" {
+		devUserPassword = os.Getenv("DEV_ADMIN_PASSWORD")
+	}
 	cfg := Config{
 		Environment:                 valueOrDefault("APP_ENV", "production"),
 		HTTPAddr:                    valueOrDefault("HTTP_ADDR", ":8080"),
@@ -44,6 +51,9 @@ func Load() (Config, error) {
 		DevAdminEmail:               os.Getenv("DEV_ADMIN_EMAIL"),
 		DevAdminUsername:            os.Getenv("DEV_ADMIN_USERNAME"),
 		DevAdminPassword:            os.Getenv("DEV_ADMIN_PASSWORD"),
+		DevUserEmail:                os.Getenv("DEV_USER_EMAIL"),
+		DevUserUsername:             os.Getenv("DEV_USER_USERNAME"),
+		DevUserPassword:             devUserPassword,
 		GitHubPublisherAppSlug:      os.Getenv("GITHUB_PUBLISHER_APP_SLUG"),
 		GitHubPublisherClientID:     os.Getenv("GITHUB_PUBLISHER_CLIENT_ID"),
 		GitHubPublisherClientSecret: os.Getenv("GITHUB_PUBLISHER_CLIENT_SECRET"),
@@ -121,7 +131,7 @@ func boolValue(key string, fallback bool) (bool, error) {
 	return value, nil
 }
 
-// GitHubAppJWT creates a new short-lived token for a GitHub App API request.
+// GitHubAppJWT signs a short-lived token for GitHub App API requests.
 func (c Config) GitHubAppJWT() (string, error) {
 	if c.GitHubPublisherClientID == "" || c.GitHubPublisherPrivateKey == nil {
 		return "", errors.New("github app credentials are not configured")

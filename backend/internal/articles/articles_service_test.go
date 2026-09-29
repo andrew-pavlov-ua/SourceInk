@@ -14,11 +14,22 @@ type serviceTestStore struct {
 	userRepositories   []model.Repository
 	syncRepositories   []model.Repository
 	upsertedSourcePath []string
+	reconcileCalls     int
+	reconcileErr       error
 	publishDraft       model.UnpublishedArticle
 	publishResult      model.Article
 	findPublishErr     error
+	findPublishUserID  string
+	findPublishDraftID string
 	publishErr         error
 	publishCalls       int
+	autoPublishDraft   model.UnpublishedArticle
+	autoPublishResult  model.Article
+	autoFindErr        error
+	autoPublishErr     error
+	autoPublishCalls   int
+	autoPublishDraftID string
+	autoPublishBlobSHA string
 }
 
 func (s *serviceTestStore) ListUserArticles(context.Context, string) ([]model.Article, error) {
@@ -40,16 +51,36 @@ func (s *serviceTestStore) ListRepositoriesForArticleSync(context.Context) ([]mo
 func (s *serviceTestStore) UpsertUnpublishedArticle(_ context.Context, article *model.UnpublishedArticle) error {
 	s.upsertedSourcePath = append(s.upsertedSourcePath, article.SourcePath)
 	article.ID = "saved-" + article.SourcePath
+	s.unpublished = append(s.unpublished, *article)
 	return nil
 }
 
-func (s *serviceTestStore) FindUnpublishedArticleForPublish(context.Context, string, string) (model.UnpublishedArticle, error) {
+func (s *serviceTestStore) ReconcileDuplicateSlugs(context.Context) error {
+	s.reconcileCalls++
+	return s.reconcileErr
+}
+
+func (s *serviceTestStore) FindUnpublishedArticleForPublish(_ context.Context, userID, draftID string) (model.UnpublishedArticle, error) {
+	s.findPublishUserID = userID
+	s.findPublishDraftID = draftID
 	return s.publishDraft, s.findPublishErr
 }
 
 func (s *serviceTestStore) PublishArticle(_ context.Context, _, _, _ string) (model.Article, error) {
 	s.publishCalls++
 	return s.publishResult, s.publishErr
+}
+
+func (s *serviceTestStore) AutoFindUnpublishedArticleForPublish(_ context.Context, draftID string) (model.UnpublishedArticle, error) {
+	s.autoPublishDraftID = draftID
+	return s.autoPublishDraft, s.autoFindErr
+}
+
+func (s *serviceTestStore) AutoPublishArticle(_ context.Context, draftID, gitBlobSHA string) (model.Article, error) {
+	s.autoPublishCalls++
+	s.autoPublishDraftID = draftID
+	s.autoPublishBlobSHA = gitBlobSHA
+	return s.autoPublishResult, s.autoPublishErr
 }
 
 type serviceTestLoader struct {
@@ -112,6 +143,31 @@ func TestListForUserDiscoversAndSavesArticlesWhenStorageIsEmpty(t *testing.T) {
 	}
 	if len(articles.UnpublishedArticles) != 1 || articles.UnpublishedArticles[0].ID != "saved-guides/setup.md" {
 		t.Fatalf("unpublished articles = %#v", articles.UnpublishedArticles)
+	}
+	if store.reconcileCalls != 1 {
+		t.Fatalf("duplicate slug checks = %d, want 1", store.reconcileCalls)
+	}
+}
+
+func TestListForUserDoesNotAutomaticallyPublishDiscoveredArticles(t *testing.T) {
+	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
+	store := &serviceTestStore{userRepositories: []model.Repository{repository}}
+	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
+		repository.ID: {{
+			RepositoryID: repository.ID,
+			SourcePath:   "automatic.md",
+			Frontmatter:  model.Frontmatter{Title: "Automatic", Slug: "automatic", PublishMode: "auto"},
+			GitBlobSHA:   "blob-sha",
+			Present:      true,
+		}},
+	}}
+	service := NewService(store, loader)
+
+	if _, err := service.ListForUser(context.Background(), "user-id"); err != nil {
+		t.Fatalf("ListForUser() error = %v", err)
+	}
+	if store.autoPublishCalls != 0 {
+		t.Fatalf("ListForUser() auto-publish calls = %d, want 0", store.autoPublishCalls)
 	}
 }
 
@@ -215,5 +271,86 @@ func TestPublishArticleStoresAuthorizedDraft(t *testing.T) {
 	}
 	if store.publishCalls != 1 {
 		t.Fatalf("PublishArticle() store calls = %d, want 1", store.publishCalls)
+	}
+	if store.findPublishUserID != "user-id" || store.findPublishDraftID != "draft-id" {
+		t.Fatalf("manual lookup = user:%q draft:%q", store.findPublishUserID, store.findPublishDraftID)
+	}
+}
+
+func TestPublishArticleRejectsAutomaticDraft(t *testing.T) {
+	store := &serviceTestStore{publishDraft: publishableDraft("auto")}
+	service := NewService(store, &serviceTestLoader{})
+
+	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
+	if !errors.Is(err, model.ErrArticleNotPublishable) {
+		t.Fatalf("PublishArticle() error = %v, want ErrArticleNotPublishable", err)
+	}
+	if store.publishCalls != 0 {
+		t.Fatalf("PublishArticle() store calls = %d, want 0", store.publishCalls)
+	}
+}
+
+func TestPublishArticleRejectsDuplicateSlugValidation(t *testing.T) {
+	validationError := `duplicate slug: 'article' is used by multiple source files; choose a unique slug.`
+	store := &serviceTestStore{publishDraft: model.UnpublishedArticle{
+		ID:              "draft-id",
+		Frontmatter:     model.Frontmatter{Title: "Article", Slug: "article", PublishMode: "manual"},
+		GitBlobSHA:      "blob-sha",
+		Present:         true,
+		ValidationError: &validationError,
+	}}
+	service := NewService(store, &serviceTestLoader{})
+
+	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
+	if !errors.Is(err, model.ErrArticleNotPublishable) {
+		t.Fatalf("PublishArticle() error = %v, want ErrArticleNotPublishable", err)
+	}
+	if store.publishCalls != 0 {
+		t.Fatalf("PublishArticle() store calls = %d, want 0", store.publishCalls)
+	}
+}
+
+func TestAutoPublishArticleRejectsManualDraft(t *testing.T) {
+	store := &serviceTestStore{autoPublishDraft: publishableDraft("manual")}
+	service := NewService(store, &serviceTestLoader{})
+
+	_, err := service.AutoPublishArticle(context.Background(), "draft-id")
+	if !errors.Is(err, model.ErrArticleNotPublishable) {
+		t.Fatalf("AutoPublishArticle() error = %v, want ErrArticleNotPublishable", err)
+	}
+	if store.autoPublishCalls != 0 {
+		t.Fatalf("AutoPublishArticle() store calls = %d, want 0", store.autoPublishCalls)
+	}
+}
+
+func TestAutoPublishArticleStoresAutomaticDraftWithoutUserID(t *testing.T) {
+	store := &serviceTestStore{
+		autoPublishDraft:  publishableDraft("auto"),
+		autoPublishResult: model.Article{ID: "article-id"},
+	}
+	service := NewService(store, &serviceTestLoader{})
+
+	article, err := service.AutoPublishArticle(context.Background(), "draft-id")
+	if err != nil {
+		t.Fatalf("AutoPublishArticle() error = %v", err)
+	}
+	if article.ID != "article-id" {
+		t.Fatalf("AutoPublishArticle() article = %#v", article)
+	}
+	if store.autoPublishCalls != 1 || store.autoPublishDraftID != "draft-id" || store.autoPublishBlobSHA != "blob-sha" {
+		t.Fatalf("auto-publish call = count:%d draft:%q blob:%q", store.autoPublishCalls, store.autoPublishDraftID, store.autoPublishBlobSHA)
+	}
+}
+
+func publishableDraft(publishMode string) model.UnpublishedArticle {
+	return model.UnpublishedArticle{
+		ID: "draft-id",
+		Frontmatter: model.Frontmatter{
+			Title:       "Article",
+			Slug:        "article",
+			PublishMode: publishMode,
+		},
+		GitBlobSHA: "blob-sha",
+		Present:    true,
 	}
 }

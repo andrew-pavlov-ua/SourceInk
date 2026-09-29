@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   if (!user) redirect("/login");
 
   return (
-    <AppShell repository="github.com/example/field-notes" username={user.username}>
+    <AppShell username={user.username}>
       {children}
     </AppShell>
   );

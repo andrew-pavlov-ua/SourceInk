@@ -24,6 +24,8 @@ Open <http://localhost:3000>. Check the API at <http://localhost:8080/healthz> a
 
 Set `DEV_ADMIN_EMAIL`, `DEV_ADMIN_USERNAME`, and `DEV_ADMIN_PASSWORD` in the gitignored `.env`. The development server creates that admin account on startup and keeps its password in sync with the file. The seed refuses to run outside `APP_ENV=development`.
 
+Set `DEV_USER_EMAIL`, `DEV_USER_USERNAME`, and `DEV_USER_PASSWORD` for a regular development account. If `DEV_USER_PASSWORD` is empty, local development reuses `DEV_ADMIN_PASSWORD`; set it explicitly when the accounts should have different passwords.
+
 GitHub App setup requires `GITHUB_PUBLISHER_CLIENT_ID` and `GITHUB_PUBLISHER_CLIENT_SECRET`. Set the callback URL to `http://localhost:3000/api/github/callback`. The backend keeps each OAuth attempt in memory for ten minutes. A restart cancels it.
 
 Compose exposes the application on localhost. PostgreSQL stays on the Compose network.

@@ -2,6 +2,9 @@ export type User = {
   id: string;
   email: string;
   username: string;
+  github_user_id?: number;
+  github_login?: string;
+  github_avatar_url?: string;
   role: "user" | "admin";
   created_at: string;
 };

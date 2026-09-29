@@ -35,4 +35,4 @@ goose_lite_tags := no_azuresql no_clickhouse no_libsql no_mssql no_mysql no_sqli
 
 migration:
 	@test -n "$(name)" || (echo "usage: make migration name=add_articles" && exit 1)
-	cd backend && go run -mod=readonly -tags="$(goose_lite_tags)" github.com/pressly/goose/v3/cmd/goose -dir internal/database/migrations create "$(name)" sql
+	cd backend && go run -mod=mod -tags="$(goose_lite_tags)" github.com/pressly/goose/v3/cmd/goose -s -dir internal/database/migrations create "$(name)" sql

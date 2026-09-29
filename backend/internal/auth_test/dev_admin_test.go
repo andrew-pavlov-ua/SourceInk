@@ -20,3 +20,16 @@ func TestEnsureDevelopmentAdminRequiresAllCredentials(t *testing.T) {
 		t.Fatalf("EnsureDevelopmentAdmin() error = %v, want required credentials error", err)
 	}
 }
+
+func TestEnsureDevelopmentUserDoesNothingOutsideDevelopment(t *testing.T) {
+	if err := auth.EnsureDevelopmentUser(context.Background(), nil, "production", "", "", ""); err != nil {
+		t.Fatalf("EnsureDevelopmentUser() error = %v", err)
+	}
+}
+
+func TestEnsureDevelopmentUserRequiresAllCredentials(t *testing.T) {
+	err := auth.EnsureDevelopmentUser(context.Background(), nil, "development", "user@example.com", "sourceink-user", "")
+	if err == nil || !strings.Contains(err.Error(), "DEV_USER_EMAIL") {
+		t.Fatalf("EnsureDevelopmentUser() error = %v, want required credentials error", err)
+	}
+}
