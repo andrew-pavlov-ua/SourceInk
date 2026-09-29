@@ -1,6 +1,6 @@
 ---
-title: "Test Document"
-slug: "joooou"
+title: "Test Document1"
+slug: "CHANGED"
 description: "example description eshkere"
 publish_mode: "manual"
 ---
@@ -8,11 +8,11 @@ publish_mode: "manual"
 Helloooooo my frineds
 
 ## AAAAAA
-# aaaaa
+# aaaaabbbbb
 ### AAAAAAA
 
 ```sql
-SELECT * FROM users WHERE id = 1;
+SELECT * FROM users WHERE id = 1; SSDDDXX
 ```
 
 

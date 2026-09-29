@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import { ArticleDiff } from "@/components/article-diff";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { PublishArticleButton } from "@/components/publish-article-button";
 import { getArticles, type PublishedArticle, type UnpublishedArticle } from "@/lib/backend";
@@ -26,6 +27,30 @@ function displayDate(value: string) {
 
 function articleTitle(article: PublishedArticle | UnpublishedArticle) {
   return article.title || article.source_path.split("/").at(-1)?.replace(/\.md$/i, "") || "Untitled article";
+}
+
+function frontmatterRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function articleSource(
+  frontmatter: { title: string; slug: string; description: string; tags: string[]; publishMode: string },
+  markdown: string,
+) {
+  return [
+    "---",
+    `title: ${JSON.stringify(frontmatter.title)}`,
+    `slug: ${JSON.stringify(frontmatter.slug)}`,
+    `description: ${JSON.stringify(frontmatter.description)}`,
+    `tags: ${JSON.stringify(frontmatter.tags)}`,
+    `publish_mode: ${JSON.stringify(frontmatter.publishMode)}`,
+    "---",
+    markdown,
+  ].join("\n");
 }
 
 function Configuration({ items }: { items: ConfigurationItem[] }) {
@@ -71,6 +96,25 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   const isPublishedVersionCurrent = Boolean(
     draft && existingPublication?.git_blob_sha === draft.git_blob_sha,
   );
+  const existingFrontmatter = frontmatterRecord(existingPublication?.frontmatter);
+  const publishedSource = existingPublication ? articleSource({
+    title: existingPublication.title,
+    slug: existingPublication.slug,
+    description: typeof existingFrontmatter.description === "string" ? existingFrontmatter.description : "",
+    tags: stringArray(existingFrontmatter.tags),
+    publishMode: existingPublication.publish_mode,
+  }, existingPublication.markdown) : "";
+  const draftSource = draft
+    ? draft.validation_error
+      ? draft.content
+      : articleSource({
+          title: draft.title,
+          slug: draft.slug,
+          description: draft.description,
+          tags: draft.tags,
+          publishMode: draft.publish_mode,
+        }, draft.content)
+    : "";
   const publishDisabledReason = draft
     ? draft.validation_error
       ? "Fix the frontmatter error before publishing."
@@ -156,6 +200,22 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
         <section className="article-inspector-section" aria-labelledby="frontmatter-json-heading">
           <header><h2 id="frontmatter-json-heading">Frontmatter</h2><p>Metadata saved with this published copy.</p></header>
           <pre className="article-code"><code>{JSON.stringify(published.frontmatter, null, 2)}</code></pre>
+        </section>
+      )}
+
+      {draft && existingPublication && !isPublishedVersionCurrent && (
+        <section className="article-inspector-section article-diff-section" aria-labelledby="article-diff-heading">
+          <header>
+            <h2 id="article-diff-heading">Changes since publication</h2>
+            <p>Compare the published snapshot with the latest repository version before publishing it.</p>
+          </header>
+          <ArticleDiff
+            publishedSource={publishedSource}
+            draftSource={draftSource}
+            sourcePath={draft.source_path}
+            publishedBlobSHA={existingPublication.git_blob_sha}
+            draftBlobSHA={draft.git_blob_sha}
+          />
         </section>
       )}
 
