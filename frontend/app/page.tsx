@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { ArticleFeed } from "@/components/article-feed";
 import { ProductPreview } from "@/components/product-preview";
 import { SiteHeader } from "@/components/site-header";
-import { getCurrentUser, SESSION_COOKIE_NAME, type User } from "@/lib/backend";
+import { getCurrentUser, getPublishedArticles, SESSION_COOKIE_NAME, type PublishedArticle, type User } from "@/lib/backend";
 
 const workflow = [
   { step: "01", title: "Install the App", body: "Choose the repositories SourceInk may read on GitHub." },
@@ -13,24 +13,43 @@ const workflow = [
 
 export const dynamic = "force-dynamic";
 
-async function getHomepageUser(): Promise<User | null> {
+type HomepageData = {
+  user: User | null;
+  publishedArticles: PublishedArticle[];
+  articlesLoadFailed: boolean;
+};
+
+async function getHomepageData(): Promise<HomepageData> {
+  const cookieStore = await cookies();
+  if (!cookieStore.has(SESSION_COOKIE_NAME)) {
+    return { user: null, publishedArticles: [], articlesLoadFailed: false };
+  }
+
+  const cookieHeader = cookieStore.toString();
+  let user: User | null;
   try {
-    const cookieStore = await cookies();
-    if (!cookieStore.has(SESSION_COOKIE_NAME)) return null;
-    return await getCurrentUser(cookieStore.toString());
+    user = await getCurrentUser(cookieHeader);
   } catch {
-    return null;
+    return { user: null, publishedArticles: [], articlesLoadFailed: false };
+  }
+  if (!user) return { user: null, publishedArticles: [], articlesLoadFailed: false };
+
+  try {
+    const publishedArticles = await getPublishedArticles();
+    return { user, publishedArticles, articlesLoadFailed: false };
+  } catch {
+    return { user, publishedArticles: [], articlesLoadFailed: true };
   }
 }
 
 export default async function HomePage() {
-  const user = await getHomepageUser();
+  const { user, publishedArticles, articlesLoadFailed } = await getHomepageData();
 
   if (user) {
     return (
       <>
         <SiteHeader />
-        <ArticleFeed username={user.username} />
+        <ArticleFeed username={user.username} articles={publishedArticles} loadFailed={articlesLoadFailed} />
       </>
     );
   }

@@ -8,7 +8,7 @@ const docs = [
   { id: "connect", title: "Install the App", body: "Choose the repositories SourceInk can read. OAuth checks that your GitHub account can access the installation." },
   { id: "discover", title: "Find source files", body: "SourceInk scans the selected repositories for Markdown files with frontmatter." },
   { id: "review", title: "Inspect a draft", body: "Open a discovered file to check its metadata, source location, and Markdown." },
-  { id: "publish", title: "Publish", body: "SourceInk cannot publish drafts yet." },
+  { id: "publish", title: "Publish", body: "Open a valid draft in the dashboard and publish its current repository snapshot." },
 ] as const;
 
 export default function DocsPage() {

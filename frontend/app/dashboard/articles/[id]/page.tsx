@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
+import { MarkdownViewer } from "@/components/markdown-viewer";
+import { PublishArticleButton } from "@/components/publish-article-button";
 import { getArticles, type PublishedArticle, type UnpublishedArticle } from "@/lib/backend";
 
 export const metadata: Metadata = { title: "Article configuration" };
@@ -63,6 +65,18 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
 
   const article = draft ?? published!;
   const isDraft = Boolean(draft);
+  const existingPublication = draft
+    ? articles.published_articles.find((candidate) => candidate.unpublished_article_id === draft.id)
+    : undefined;
+  const publishDisabledReason = draft
+    ? draft.validation_error
+      ? "Fix the frontmatter error before publishing."
+      : !draft.present
+        ? "This source file is no longer present in the repository."
+        : !draft.title.trim() || !draft.slug.trim() || !draft.publish_mode
+          ? "Add a title, slug, and publish mode before publishing."
+          : undefined
+    : undefined;
   const configuration: ConfigurationItem[] = draft ? [
     { label: "Article ID", value: draft.id, code: true },
     { label: "Repository ID", value: draft.repository_id, code: true },
@@ -96,9 +110,18 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
           <h1 id="article-title">{articleTitle(article)}</h1>
           <p>{isDraft ? "Repository draft configuration" : "Published snapshot configuration"}</p>
         </div>
-        <span className={`article-status${draft?.validation_error || (published && published.source_state !== "available") ? " article-status-error" : ""}`}>
-          {draft?.validation_error ? "Needs attention" : isDraft ? "Draft" : published!.source_state.replace("_", " ")}
-        </span>
+        <div className="article-heading-actions">
+          <span className={`article-status${draft?.validation_error || (published && published.source_state !== "available") ? " article-status-error" : ""}`}>
+            {draft?.validation_error ? "Needs attention" : isDraft ? "Draft" : published!.source_state.replace("_", " ")}
+          </span>
+          {draft && (
+            <PublishArticleButton
+              draftId={draft.id}
+              hasPublishedCopy={Boolean(existingPublication)}
+              disabledReason={publishDisabledReason}
+            />
+          )}
+        </div>
       </header>
 
       {draft?.validation_error && (
@@ -132,16 +155,9 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       )}
 
       <section className="article-inspector-section" aria-labelledby="markdown-heading">
-        <header><h2 id="markdown-heading">Markdown source</h2><p>{isDraft ? "Content from the last repository scan." : "Markdown saved for this publication."}</p></header>
-        <pre className="article-code"><code>{draft ? draft.content : published!.markdown}</code></pre>
+        <header><h2 id="markdown-heading">Markdown content</h2><p>{isDraft ? "Preview the last repository scan or inspect its source." : "Preview this publication or inspect its saved source."}</p></header>
+        <MarkdownViewer markdown={draft ? draft.content : published!.markdown} />
       </section>
-
-      {published && (
-        <section className="article-inspector-section" aria-labelledby="rendered-heading">
-          <header><h2 id="rendered-heading">Rendered HTML</h2><p>HTML saved for this publication.</p></header>
-          <pre className="article-code"><code>{published.rendered_html}</code></pre>
-        </section>
-      )}
     </article>
   );
 }

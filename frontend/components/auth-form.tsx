@@ -5,17 +5,18 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 type AuthMode = "login" | "register";
+type PendingAction = "email" | "github" | null;
 
 export function AuthForm({ mode }: { mode: AuthMode }) {
   const router = useRouter();
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const register = mode === "register";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    setPending(true);
+    setPendingAction("email");
 
     const form = new FormData(event.currentTarget);
     const payload = {
@@ -41,18 +42,22 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
     } catch {
       setError("Could not reach SourceInk. Try again.");
     } finally {
-      setPending(false);
+      setPendingAction(null);
     }
   }
 
   function beginGitHubLogin() {
-    router.push("/api/auth/github");
+    setError("");
+    setPendingAction("github");
+    // OAuth must leave the Next.js app instead of requesting an RSC payload.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign("/api/auth/github");
   }
 
   return (
     <form className="auth-form" onSubmit={submit}>
-      <button className="button auth-submit auth-github" type="button" onClick={beginGitHubLogin}>
-        Continue with GitHub
+      <button className="button auth-submit auth-github" type="button" onClick={beginGitHubLogin} disabled={pendingAction !== null}>
+        {pendingAction === "github" ? "Connecting to GitHub…" : "Continue with GitHub"}
       </button>
       <div className="auth-divider" role="separator">or use email</div>
       {register && (
@@ -74,8 +79,8 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
       <div className="form-status" aria-live="polite">
         {error && <p className="form-error">{error}</p>}
       </div>
-      <button className="button auth-submit" type="submit" disabled={pending}>
-        {pending ? "Please wait" : register ? "Create account" : "Log in"}
+      <button className="button auth-submit" type="submit" disabled={pendingAction !== null}>
+        {pendingAction === "email" ? "Please wait…" : register ? "Create account" : "Log in"}
       </button>
       <p className="auth-switch">
         {register ? "Already have an account?" : "Need an account?"}{" "}

@@ -12,6 +12,8 @@ var (
 	ErrUsernameTaken              = errors.New("username is already registered")
 	ErrGitHubUsernameTaken        = errors.New("GitHub username is already connected to another account")
 	ErrGitHubInstallationConflict = errors.New("github installation is connected to another user")
+	ErrArticleNotFound            = errors.New("article draft not found")
+	ErrArticleNotPublishable      = errors.New("article draft cannot be published")
 )
 
 type User struct {
@@ -105,6 +107,7 @@ type Article struct {
 	ID                   string             `db:"id" json:"id"`
 	UnpublishedArticleID *string            `db:"unpublished_article_id" json:"unpublished_article_id,omitempty"`
 	OwnerID              string             `db:"owner_id" json:"owner_id"`
+	AuthorUsername       string             `db:"author_username" json:"author_username"`
 	RepositoryID         *string            `db:"repository_id" json:"repository_id,omitempty"`
 	SourcePath           string             `db:"source_path" json:"source_path"`
 	Slug                 string             `db:"slug" json:"slug"`
@@ -114,7 +117,6 @@ type Article struct {
 	Markdown             string             `db:"markdown" json:"markdown"`
 	Title                string             `db:"title" json:"title"`
 	Frontmatter          *json.RawMessage   `db:"frontmatter" json:"frontmatter,omitempty"`
-	RenderedHTML         string             `db:"rendered_html" json:"rendered_html"`
 	PublishedAt          time.Time          `db:"published_at" json:"published_at"`
 	CreatedAt            time.Time          `db:"created_at" json:"created_at"`
 	UpdatedAt            time.Time          `db:"updated_at" json:"updated_at"`

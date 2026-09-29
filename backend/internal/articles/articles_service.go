@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"sourceink/backend/internal/model"
 )
@@ -15,6 +16,8 @@ type Store interface {
 	ListRepositoriesForUser(ctx context.Context, userID string) ([]model.Repository, error)
 	ListRepositoriesForArticleSync(ctx context.Context) ([]model.Repository, error)
 	UpsertUnpublishedArticle(ctx context.Context, article *model.UnpublishedArticle) error
+	FindUnpublishedArticleForPublish(ctx context.Context, userID, draftID string) (model.UnpublishedArticle, error)
+	PublishArticle(ctx context.Context, userID, draftID, gitBlobSHA string) (model.Article, error)
 }
 
 type ArticleLoader interface {
@@ -63,6 +66,38 @@ func (s *Service) ListForUser(ctx context.Context, userID string) (model.UserArt
 		UnpublishedArticles: unpublishedArticles,
 		PublishedArticles:   publishedArticles,
 	}, nil
+}
+
+func (s *Service) PublishArticle(ctx context.Context, userID, draftID string) (model.Article, error) {
+	if err := ctx.Err(); err != nil {
+		return model.Article{}, fmt.Errorf("publish article: %w", err)
+	}
+	if userID == "" || draftID == "" {
+		return model.Article{}, fmt.Errorf("publish article: %w", model.ErrArticleNotFound)
+	}
+
+	draft, err := s.store.FindUnpublishedArticleForPublish(ctx, userID, draftID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, model.ErrArticleNotFound) {
+			return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, model.ErrArticleNotFound)
+		}
+		return model.Article{}, fmt.Errorf("load article draft %s for publication: %w", draftID, err)
+	}
+
+	if !draft.Present || draft.ValidationError != nil || strings.TrimSpace(draft.Title) == "" || strings.TrimSpace(draft.Slug) == "" ||
+		(draft.PublishMode != string(model.ArticlePublishModeManual) && draft.PublishMode != string(model.ArticlePublishModeAutomatic)) {
+		return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, model.ErrArticleNotPublishable)
+	}
+
+	article, err := s.store.PublishArticle(ctx, userID, draftID, draft.GitBlobSHA)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, model.ErrArticleNotPublishable) {
+			return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, model.ErrArticleNotPublishable)
+		}
+		return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, err)
+	}
+
+	return article, nil
 }
 
 func (s *Service) discoverForUser(ctx context.Context, userID string) ([]model.UnpublishedArticle, error) {

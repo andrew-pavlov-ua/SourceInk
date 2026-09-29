@@ -47,6 +47,7 @@ export type PublishedArticle = {
   id: string;
   unpublished_article_id?: string;
   owner_id: string;
+  author_username: string;
   repository_id?: string;
   source_path: string;
   slug: string;
@@ -56,7 +57,6 @@ export type PublishedArticle = {
   markdown: string;
   title: string;
   frontmatter?: unknown;
-  rendered_html: string;
   published_at: string;
   created_at: string;
   updated_at: string;
@@ -109,6 +109,16 @@ export async function getArticles(cookieHeader: string): Promise<UserArticles> {
     ...body,
     unpublished_articles: body.unpublished_articles.map(normalizeUnpublishedArticle),
   };
+}
+
+export async function getPublishedArticles(): Promise<PublishedArticle[]> {
+  const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
+  const response = await fetch(`${baseURL}/api/published-articles`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`published article lookup failed with status ${response.status}`);
+
+  const body: unknown = await response.json();
+  if (!Array.isArray(body)) throw new Error("published article lookup returned an invalid response");
+  return body as PublishedArticle[];
 }
 
 function normalizeUnpublishedArticle(article: UnpublishedArticle): UnpublishedArticle {

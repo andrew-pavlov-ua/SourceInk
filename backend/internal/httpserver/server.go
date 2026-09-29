@@ -89,6 +89,8 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 	router.Route("/api/", func(r chi.Router) {
 		r.Get("/repos", apiHandler.ListRepositories)
 		r.Get("/articles", apiHandler.ListArticles)
+		r.Get("/published-articles", apiHandler.ListPublishedArticles)
+		r.Post("/articles/{draftID}/publish", apiHandler.PublishArticle)
 	})
 
 	handler := securityHeaders(router)

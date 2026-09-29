@@ -14,6 +14,11 @@ type serviceTestStore struct {
 	userRepositories   []model.Repository
 	syncRepositories   []model.Repository
 	upsertedSourcePath []string
+	publishDraft       model.UnpublishedArticle
+	publishResult      model.Article
+	findPublishErr     error
+	publishErr         error
+	publishCalls       int
 }
 
 func (s *serviceTestStore) ListUserArticles(context.Context, string) ([]model.Article, error) {
@@ -36,6 +41,15 @@ func (s *serviceTestStore) UpsertUnpublishedArticle(_ context.Context, article *
 	s.upsertedSourcePath = append(s.upsertedSourcePath, article.SourcePath)
 	article.ID = "saved-" + article.SourcePath
 	return nil
+}
+
+func (s *serviceTestStore) FindUnpublishedArticleForPublish(context.Context, string, string) (model.UnpublishedArticle, error) {
+	return s.publishDraft, s.findPublishErr
+}
+
+func (s *serviceTestStore) PublishArticle(_ context.Context, _, _, _ string) (model.Article, error) {
+	s.publishCalls++
+	return s.publishResult, s.publishErr
 }
 
 type serviceTestLoader struct {
@@ -131,5 +145,75 @@ func TestDiscoverIncludesRepositoryNameInLoaderError(t *testing.T) {
 	}
 	if got := err.Error(); got != "load unpublished articles from octocat/docs: GitHub unavailable" {
 		t.Fatalf("discover() error = %q", got)
+	}
+}
+
+func TestPublishArticleWrapsNotFoundForMissingIdentity(t *testing.T) {
+	service := NewService(&serviceTestStore{}, &serviceTestLoader{})
+
+	_, err := service.PublishArticle(context.Background(), "", "draft-id")
+	if !errors.Is(err, model.ErrArticleNotFound) {
+		t.Fatalf("PublishArticle() error = %v, want ErrArticleNotFound", err)
+	}
+}
+
+func TestPublishArticleWrapsNotFoundForUnauthorizedDraft(t *testing.T) {
+	store := &serviceTestStore{findPublishErr: model.ErrArticleNotFound}
+	service := NewService(store, &serviceTestLoader{})
+
+	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
+	if !errors.Is(err, model.ErrArticleNotFound) {
+		t.Fatalf("PublishArticle() error = %v, want ErrArticleNotFound", err)
+	}
+}
+
+func TestPublishArticleRejectsInvalidDraft(t *testing.T) {
+	store := &serviceTestStore{publishDraft: model.UnpublishedArticle{
+		ID: "draft-id",
+		Frontmatter: model.Frontmatter{
+			Title:       "Article",
+			Slug:        "article",
+			PublishMode: "manual",
+		},
+		GitBlobSHA: "blob-sha",
+		Present:    false,
+	}}
+	service := NewService(store, &serviceTestLoader{})
+
+	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
+	if !errors.Is(err, model.ErrArticleNotPublishable) {
+		t.Fatalf("PublishArticle() error = %v, want ErrArticleNotPublishable", err)
+	}
+	if store.publishCalls != 0 {
+		t.Fatalf("PublishArticle() store calls = %d, want 0", store.publishCalls)
+	}
+}
+
+func TestPublishArticleStoresAuthorizedDraft(t *testing.T) {
+	store := &serviceTestStore{
+		publishDraft: model.UnpublishedArticle{
+			ID: "draft-id",
+			Frontmatter: model.Frontmatter{
+				Title:       "Article",
+				Slug:        "article",
+				PublishMode: "manual",
+			},
+			GitBlobSHA: "blob-sha",
+			Content:    "# Hello\n\nPublished content.",
+			Present:    true,
+		},
+		publishResult: model.Article{ID: "article-id"},
+	}
+	service := NewService(store, &serviceTestLoader{})
+
+	article, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
+	if err != nil {
+		t.Fatalf("PublishArticle() error = %v", err)
+	}
+	if article.ID != "article-id" {
+		t.Fatalf("PublishArticle() article = %#v", article)
+	}
+	if store.publishCalls != 1 {
+		t.Fatalf("PublishArticle() store calls = %d, want 1", store.publishCalls)
 	}
 }

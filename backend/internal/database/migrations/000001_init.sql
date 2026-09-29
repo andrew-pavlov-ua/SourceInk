@@ -98,7 +98,6 @@ create table articles (
     markdown text not null,
     title text not null,
     frontmatter jsonb,
-    rendered_html text not null,
     published_at timestamptz not null default now(),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()

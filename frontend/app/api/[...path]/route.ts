@@ -10,15 +10,24 @@ const allowedPaths = new Set([
   "auth/github",
   "repos",
   "articles",
+  "published-articles",
   "github/install",
   "github/setup",
   "github/callback",
 ]);
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isAllowedPath(path: string[]) {
+  const joinedPath = path.join("/");
+  return allowedPaths.has(joinedPath)
+    || (path.length === 3 && path[0] === "articles" && uuidPattern.test(path[1]) && path[2] === "publish");
+}
+
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
   const joinedPath = path.join("/");
-  if (!allowedPaths.has(joinedPath)) {
+  if (!isAllowedPath(path)) {
     return Response.json({ error: "not found" }, { status: 404 });
   }
 
