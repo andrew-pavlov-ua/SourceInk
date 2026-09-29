@@ -68,6 +68,9 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   const existingPublication = draft
     ? articles.published_articles.find((candidate) => candidate.unpublished_article_id === draft.id)
     : undefined;
+  const isPublishedVersionCurrent = Boolean(
+    draft && existingPublication?.git_blob_sha === draft.git_blob_sha,
+  );
   const publishDisabledReason = draft
     ? draft.validation_error
       ? "Fix the frontmatter error before publishing."
@@ -75,6 +78,8 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
         ? "This source file is no longer present in the repository."
         : !draft.title.trim() || !draft.slug.trim() || !draft.publish_mode
           ? "Add a title, slug, and publish mode before publishing."
+          : isPublishedVersionCurrent
+            ? "This repository version is already published."
           : undefined
     : undefined;
   const configuration: ConfigurationItem[] = draft ? [
