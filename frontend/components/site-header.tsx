@@ -24,7 +24,7 @@ export async function SiteHeader() {
         <nav className="site-product-nav" aria-label="Product navigation">
           <Link href="/product">Product</Link>
           <Link href="/docs">Docs</Link>
-          <Link href="/pricing">Pricing</Link>
+          {/*<Link href="/pricing">Pricing</Link>*/}
         </nav>
       </div>
       <div className="site-nav">

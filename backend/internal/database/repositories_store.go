@@ -150,3 +150,18 @@ func (s *Store) ListRepositoriesForArticleSync(ctx context.Context) ([]model.Rep
 
 	return repositories, err
 }
+
+func (s *Store) RepositoryForWebhookSync(ctx context.Context, installationID, githubRepositoryID int64) (model.Repository, error) {
+	var repository model.Repository
+	err := s.db.GetContext(ctx, &repository, `
+		select r.id, r.installation_id, r.github_id, r.owner, r.name, r.full_name,
+			r.default_branch, r.private, r.archived
+		from repositories r
+		join github_installations gi on gi.installation_id = r.installation_id
+		where r.installation_id = $1
+			and r.github_id = $2
+			and not gi.suspended
+			and not r.archived
+	`, installationID, githubRepositoryID)
+	return repository, err
+}

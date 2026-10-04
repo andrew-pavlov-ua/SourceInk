@@ -54,6 +54,7 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 
 	articlesService := articles.NewService(store, githubClient)
 	articlesWorker := articles.NewArticlesWorker(articlesService)
+	githubWebhookHandler := github.NewWebhookHandler(cfg.GitHubWebhookSecret, store, articlesWorker.SyncRepository, logger)
 	apiService := apiService.NewService(store, articlesService)
 	apiHandler := apiHandler.NewHandler(&apiService, cfg.CookieSecure, logger)
 
@@ -88,6 +89,7 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 			r.Get("/install", githubHandler.InstallationRedirect)
 			r.Get("/setup", githubHandler.SetupInstallation)
 			r.Get("/callback", githubHandler.ValidateOAuthCallback)
+			r.Post("/webhook", githubWebhookHandler.ServeHTTP)
 		})
 		r.Get("/repos", apiHandler.ListRepositories)
 		r.Get("/articles", apiHandler.ListArticles)

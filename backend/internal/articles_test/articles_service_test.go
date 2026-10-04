@@ -11,27 +11,30 @@ import (
 )
 
 type serviceTestStore struct {
-	published          []model.Article
-	unpublished        []model.UnpublishedArticle
-	userRepositories   []model.Repository
-	syncRepositories   []model.Repository
-	upsertedSourcePath []string
-	reconcileCalls     int
-	reconcileErr       error
-	publishDraft       model.UnpublishedArticle
-	publishResult      model.Article
-	findPublishErr     error
-	findPublishUserID  string
-	findPublishDraftID string
-	publishErr         error
-	publishCalls       int
-	autoPublishDraft   model.UnpublishedArticle
-	autoPublishResult  model.Article
-	autoFindErr        error
-	autoPublishErr     error
-	autoPublishCalls   int
-	autoPublishDraftID string
-	autoPublishBlobSHA string
+	published           []model.Article
+	unpublished         []model.UnpublishedArticle
+	userRepositories    []model.Repository
+	syncRepositories    []model.Repository
+	webhookRepository   model.Repository
+	upsertedSourcePath  []string
+	missingRepositoryID string
+	missingPaths        []string
+	reconcileCalls      int
+	reconcileErr        error
+	publishDraft        model.UnpublishedArticle
+	publishResult       model.Article
+	findPublishErr      error
+	findPublishUserID   string
+	findPublishDraftID  string
+	publishErr          error
+	publishCalls        int
+	autoPublishDraft    model.UnpublishedArticle
+	autoPublishResult   model.Article
+	autoFindErr         error
+	autoPublishErr      error
+	autoPublishCalls    int
+	autoPublishDraftID  string
+	autoPublishBlobSHA  string
 }
 
 func (s *serviceTestStore) ListUserArticles(context.Context, string) ([]model.Article, error) {
@@ -50,10 +53,20 @@ func (s *serviceTestStore) ListRepositoriesForArticleSync(context.Context) ([]mo
 	return s.syncRepositories, nil
 }
 
+func (s *serviceTestStore) RepositoryForWebhookSync(_ context.Context, _, _ int64) (model.Repository, error) {
+	return s.webhookRepository, nil
+}
+
 func (s *serviceTestStore) UpsertUnpublishedArticle(_ context.Context, article *model.UnpublishedArticle) error {
 	s.upsertedSourcePath = append(s.upsertedSourcePath, article.SourcePath)
 	article.ID = "saved-" + article.SourcePath
 	s.unpublished = append(s.unpublished, *article)
+	return nil
+}
+
+func (s *serviceTestStore) MarkMissingUnpublishedArticles(_ context.Context, repositoryID string, presentPaths []string) error {
+	s.missingRepositoryID = repositoryID
+	s.missingPaths = append([]string(nil), presentPaths...)
 	return nil
 }
 
@@ -154,9 +167,13 @@ func TestListForUserDiscoversAndSavesArticlesWhenStorageIsEmpty(t *testing.T) {
 	}
 }
 
-func TestListForUserDoesNotAutomaticallyPublishDiscoveredArticles(t *testing.T) {
+func TestListForUserAutomaticallyPublishesDiscoveredAutoArticles(t *testing.T) {
 	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
-	store := &serviceTestStore{userRepositories: []model.Repository{repository}}
+	store := &serviceTestStore{
+		userRepositories:  []model.Repository{repository},
+		autoPublishDraft:  publishableDraft("auto"),
+		autoPublishResult: model.Article{ID: "article-id"},
+	}
 	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
 		repository.ID: {{
 			RepositoryID: repository.ID,
@@ -171,8 +188,8 @@ func TestListForUserDoesNotAutomaticallyPublishDiscoveredArticles(t *testing.T) 
 	if _, err := service.ListForUser(context.Background(), "user-id"); err != nil {
 		t.Fatalf("ListForUser() error = %v", err)
 	}
-	if store.autoPublishCalls != 0 {
-		t.Fatalf("ListForUser() auto-publish calls = %d, want 0", store.autoPublishCalls)
+	if store.autoPublishCalls != 1 || store.autoPublishDraftID != "saved-automatic.md" {
+		t.Fatalf("ListForUser() auto-publish call = count:%d draft:%q", store.autoPublishCalls, store.autoPublishDraftID)
 	}
 }
 

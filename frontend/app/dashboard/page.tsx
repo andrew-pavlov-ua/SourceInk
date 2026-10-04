@@ -1,9 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { FrontmatterGuide } from "@/components/frontmatter-guide";
 import { getArticles, type PublishedArticle, type UnpublishedArticle } from "@/lib/backend";
 
 export const metadata: Metadata = { title: "Articles" };
+
+const frontmatterExample = `---
+title: Postgres indexes that scale
+slug: postgres-indexes
+description: How to choose indexes without slowing writes.
+tags:
+  - postgresql
+  - performance
+publish_mode: manual
+---
+
+# Postgres indexes that scale`;
 
 function articleTitle(article: PublishedArticle | UnpublishedArticle) {
   return article.title || article.source_path.split("/").at(-1)?.replace(/\.md$/i, "") || "Untitled article";
@@ -40,10 +53,24 @@ export default async function DashboardPage() {
         </div>
       </header>
 
+      <FrontmatterGuide example={frontmatterExample} />
+
       {loadFailed ? (
-        <div className="empty-row empty-row-full" role="alert">
-          <div><h2>SourceInk couldn&apos;t load your articles</h2><p>Refresh the page. If it fails again, check the GitHub App&apos;s repository access.</p></div>
-        </div>
+        <section className="dashboard-unavailable" role="alert" aria-labelledby="dashboard-unavailable-heading">
+          <div className="dashboard-unavailable-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8.5 16.5 12 13m0 0 3.5 3.5M12 13V4.5M5.5 9.5a7.5 7.5 0 1 0 13 0" /></svg>
+          </div>
+          <div>
+            <h2 id="dashboard-unavailable-heading">The dashboard is temporarily unavailable</h2>
+            <p>SourceInk could not reach its API. No repository or publishing changes were attempted. Try again in a moment, or start the backend if you are running SourceInk locally.</p>
+            <form action="/dashboard" method="get">
+              <button className="button button-small dashboard-unavailable-retry" type="submit">
+                Try again
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M15.5 7.5V4.8m0 0h-2.7m2.7 0-2 2A6 6 0 1 0 16 12" /></svg>
+              </button>
+            </form>
+          </div>
+        </section>
       ) : articleCount === 0 ? (
         <div className="empty-row empty-row-full">
           <div><h2>No article drafts found</h2><p>Connect a repository that contains Markdown with frontmatter.</p></div>

@@ -33,6 +33,7 @@ type Config struct {
 	GitHubPublisherAppSlug      string
 	GitHubPublisherClientID     string
 	GitHubPublisherClientSecret string
+	GitHubWebhookSecret         string
 	GitHubPublisherAPIBaseURL   string
 	GitHubPublisherPrivateKey   *rsa.PrivateKey
 }
@@ -57,6 +58,7 @@ func Load() (Config, error) {
 		GitHubPublisherAppSlug:      os.Getenv("GITHUB_PUBLISHER_APP_SLUG"),
 		GitHubPublisherClientID:     os.Getenv("GITHUB_PUBLISHER_CLIENT_ID"),
 		GitHubPublisherClientSecret: os.Getenv("GITHUB_PUBLISHER_CLIENT_SECRET"),
+		GitHubWebhookSecret:         os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		GitHubPublisherAPIBaseURL:   valueOrDefault("GITHUB_API_BASE_URL", "https://api.github.com"),
 	}
 
@@ -65,10 +67,10 @@ func Load() (Config, error) {
 	}
 
 	privateKeyPath := strings.TrimSpace(os.Getenv("GITHUB_PUBLISHER_PRIVATE_KEY_PATH"))
-	githubConfigured := cfg.GitHubPublisherAppSlug != "" || cfg.GitHubPublisherClientID != "" || privateKeyPath != ""
+	githubConfigured := cfg.GitHubPublisherAppSlug != "" || cfg.GitHubPublisherClientID != "" || privateKeyPath != "" || cfg.GitHubWebhookSecret != ""
 	if githubConfigured {
-		if cfg.GitHubPublisherAppSlug == "" || cfg.GitHubPublisherClientID == "" || privateKeyPath == "" {
-			return Config{}, errors.New("GITHUB_PUBLISHER_APP_SLUG, GITHUB_PUBLISHER_CLIENT_ID, and GITHUB_PUBLISHER_PRIVATE_KEY_PATH must be set together")
+		if cfg.GitHubPublisherAppSlug == "" || cfg.GitHubPublisherClientID == "" || cfg.GitHubPublisherClientSecret == "" || privateKeyPath == "" || cfg.GitHubWebhookSecret == "" {
+			return Config{}, errors.New("GITHUB_PUBLISHER_APP_SLUG, GITHUB_PUBLISHER_CLIENT_ID, GITHUB_PUBLISHER_CLIENT_SECRET, GITHUB_PUBLISHER_PRIVATE_KEY_PATH, and GITHUB_WEBHOOK_SECRET must be set together")
 		}
 
 		privateKeyPEM, err := os.ReadFile(privateKeyPath)

@@ -13,7 +13,7 @@ type ArticlesWorker struct {
 	service *Service
 }
 
-const articlesSyncInterval = 15 * time.Second
+const articlesSyncInterval = 24 * time.Hour
 
 func NewArticlesWorker(service *Service) *ArticlesWorker {
 	return &ArticlesWorker{service: service}
@@ -60,37 +60,50 @@ func (w *ArticlesWorker) RunOnce(ctx context.Context) ([]model.UnpublishedArticl
 }
 
 func (w *ArticlesWorker) SyncOnce(ctx context.Context) ([]model.UnpublishedArticle, error) {
-	unpublishedArticles, err := w.RunOnce(ctx)
+	if w.service == nil || w.service.loader == nil {
+		return nil, errors.New("articles worker is not configured")
+	}
+	repositories, err := w.service.store.ListRepositoriesForArticleSync(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("discover unpublished articles: %w", err)
+		return nil, fmt.Errorf("list repositories for article sync: %w", err)
 	}
 
-	if err := w.service.save(ctx, unpublishedArticles); err != nil {
-		return nil, fmt.Errorf("save unpublished articles: %w", err)
+	unpublishedArticles := make([]model.UnpublishedArticle, 0)
+	for _, repository := range repositories {
+		repositoryArticles, err := w.service.syncRepository(ctx, repository)
+		if err != nil {
+			return nil, fmt.Errorf("sync repository %s: %w", repository.FullName, err)
+		}
+		unpublishedArticles = append(unpublishedArticles, repositoryArticles...)
 	}
 	if err := w.service.store.ReconcileDuplicateSlugs(ctx); err != nil {
 		return nil, fmt.Errorf("validate article slugs: %w", err)
 	}
-	if err := w.AutoPublishArticles(ctx, unpublishedArticles); err != nil {
+	if err := w.service.AutoPublishArticles(ctx, unpublishedArticles); err != nil {
 		return nil, err
 	}
 
 	return unpublishedArticles, nil
 }
 
-func (w *ArticlesWorker) AutoPublishArticles(ctx context.Context, unpublishedArticles []model.UnpublishedArticle) error {
-	for _, article := range unpublishedArticles {
-		if article.ValidationError != nil {
-			continue
-		}
-
-		if article.Frontmatter.PublishMode == string(model.ArticlePublishModeAuto) {
-			_, err := w.service.AutoPublishArticle(ctx, article.ID)
-			if err != nil {
-				return fmt.Errorf("auto-publish article %s: %w", article.ID, err)
-			}
-		}
+// SyncRepository handles a verified push for one connected repository.
+func (w *ArticlesWorker) SyncRepository(ctx context.Context, installationID, githubRepositoryID int64) error {
+	if w.service == nil || w.service.loader == nil {
+		return errors.New("articles worker is not configured")
 	}
-
+	repository, err := w.service.store.RepositoryForWebhookSync(ctx, installationID, githubRepositoryID)
+	if err != nil {
+		return fmt.Errorf("find repository for webhook sync: %w", err)
+	}
+	unpublishedArticles, err := w.service.syncRepository(ctx, repository)
+	if err != nil {
+		return fmt.Errorf("sync repository %s: %w", repository.FullName, err)
+	}
+	if err := w.service.store.ReconcileDuplicateSlugs(ctx); err != nil {
+		return fmt.Errorf("validate article slugs: %w", err)
+	}
+	if err := w.service.AutoPublishArticles(ctx, unpublishedArticles); err != nil {
+		return err
+	}
 	return nil
 }

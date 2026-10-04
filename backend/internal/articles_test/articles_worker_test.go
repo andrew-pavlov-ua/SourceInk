@@ -62,6 +62,25 @@ func TestSyncOnceAutomaticallyPublishesOnlyAutomaticDrafts(t *testing.T) {
 	}
 }
 
+func TestSyncRepositoryUpdatesOnlyTheWebhookRepository(t *testing.T) {
+	repository := model.Repository{ID: "repository-id", InstallationID: 44, GitHubID: 99, FullName: "octocat/docs"}
+	store := &serviceTestStore{webhookRepository: repository}
+	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
+		repository.ID: {{RepositoryID: repository.ID, SourcePath: "README.md", Frontmatter: model.Frontmatter{Title: "Read me", Slug: "read-me", PublishMode: "manual"}, GitBlobSHA: "blob", Present: true}},
+	}}
+	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
+
+	if err := worker.SyncRepository(context.Background(), 44, 99); err != nil {
+		t.Fatalf("SyncRepository() error = %v", err)
+	}
+	if len(loader.loadedRepositories) != 1 || loader.loadedRepositories[0].ID != repository.ID {
+		t.Fatalf("loaded repositories = %#v", loader.loadedRepositories)
+	}
+	if store.missingRepositoryID != repository.ID || len(store.missingPaths) != 1 || store.missingPaths[0] != "README.md" {
+		t.Fatalf("missing reconciliation = repository:%q paths:%#v", store.missingRepositoryID, store.missingPaths)
+	}
+}
+
 func TestSyncOnceStopsBeforeAutoPublishWhenSlugValidationFails(t *testing.T) {
 	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
 	store := &serviceTestStore{

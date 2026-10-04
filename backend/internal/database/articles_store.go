@@ -139,6 +139,32 @@ func (s *Store) UpsertUnpublishedArticle(ctx context.Context, article *model.Unp
 	return nil
 }
 
+// MarkMissingUnpublishedArticles keeps published copies intact while making a
+// removed source file unavailable for any later publication.
+func (s *Store) MarkMissingUnpublishedArticles(ctx context.Context, repositoryID string, presentPaths []string) error {
+	if repositoryID == "" {
+		return errors.New("repository ID is required")
+	}
+	_, err := s.db.ExecContext(ctx, `
+		with missing as (
+			update unpublished_articles
+			set present = false, updated_at = now()
+			where repository_id = $1
+				and present = true
+				and source_path <> all($2::text[])
+			returning id
+		)
+		update articles
+		set source_state = 'missing', updated_at = now()
+		where unpublished_article_id in (select id from missing)
+			and source_state = 'available'
+	`, repositoryID, presentPaths)
+	if err != nil {
+		return fmt.Errorf("mark missing unpublished articles: %w", err)
+	}
+	return nil
+}
+
 // ReconcileDuplicateSlugs marks valid drafts that share an owner's slug.
 func (s *Store) ReconcileDuplicateSlugs(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `

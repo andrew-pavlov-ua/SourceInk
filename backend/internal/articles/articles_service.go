@@ -14,7 +14,9 @@ type Store interface {
 	ListUserUnpublishedArticles(ctx context.Context, userID string) ([]model.UnpublishedArticle, error)
 	ListRepositoriesForUser(ctx context.Context, userID string) ([]model.Repository, error)
 	ListRepositoriesForArticleSync(ctx context.Context) ([]model.Repository, error)
+	RepositoryForWebhookSync(ctx context.Context, installationID, githubRepositoryID int64) (model.Repository, error)
 	UpsertUnpublishedArticle(ctx context.Context, article *model.UnpublishedArticle) error
+	MarkMissingUnpublishedArticles(ctx context.Context, repositoryID string, presentPaths []string) error
 	ReconcileDuplicateSlugs(ctx context.Context) error
 	FindUnpublishedArticleForPublish(ctx context.Context, userID, draftID string) (model.UnpublishedArticle, error)
 	AutoFindUnpublishedArticleForPublish(ctx context.Context, draftID string) (model.UnpublishedArticle, error)
@@ -67,6 +69,13 @@ func (s *Service) ListForUser(ctx context.Context, userID string) (model.UserArt
 		unpublishedArticles, err = s.store.ListUserUnpublishedArticles(ctx, userID)
 		if err != nil {
 			return model.UserArticles{}, fmt.Errorf("reload discovered articles: %w", err)
+		}
+		if err := s.AutoPublishArticles(ctx, unpublishedArticles); err != nil {
+			return model.UserArticles{}, fmt.Errorf("auto-publish discovered articles: %w", err)
+		}
+		publishedArticles, err = s.store.ListUserArticles(ctx, userID)
+		if err != nil {
+			return model.UserArticles{}, fmt.Errorf("reload published articles: %w", err)
 		}
 	}
 
@@ -155,6 +164,20 @@ func (s *Service) AutoPublishArticle(ctx context.Context, draftID string) (model
 	return article, nil
 }
 
+func (s *Service) AutoPublishArticles(ctx context.Context, unpublishedArticles []model.UnpublishedArticle) error {
+	for _, article := range unpublishedArticles {
+		if article.ValidationError != nil || article.Frontmatter.PublishMode != string(model.ArticlePublishModeAuto) {
+			continue
+		}
+
+		if _, err := s.AutoPublishArticle(ctx, article.ID); err != nil {
+			return fmt.Errorf("auto-publish article %s: %w", article.ID, err)
+		}
+	}
+
+	return nil
+}
+
 func (s *Service) discoverForUser(ctx context.Context, userID string) ([]model.UnpublishedArticle, error) {
 	repositories, err := s.store.ListRepositoriesForUser(ctx, userID)
 	if err != nil {
@@ -171,6 +194,25 @@ func (s *Service) discoverForSync(ctx context.Context) ([]model.UnpublishedArtic
 	}
 
 	return s.discover(ctx, repositories)
+}
+
+func (s *Service) syncRepository(ctx context.Context, repository model.Repository) ([]model.UnpublishedArticle, error) {
+	articles, err := s.discover(ctx, []model.Repository{repository})
+	if err != nil {
+		return nil, err
+	}
+	if err := s.save(ctx, articles); err != nil {
+		return nil, fmt.Errorf("save discovered articles: %w", err)
+	}
+
+	presentPaths := make([]string, 0, len(articles))
+	for _, article := range articles {
+		presentPaths = append(presentPaths, article.SourcePath)
+	}
+	if err := s.store.MarkMissingUnpublishedArticles(ctx, repository.ID, presentPaths); err != nil {
+		return nil, fmt.Errorf("mark missing unpublished articles: %w", err)
+	}
+	return articles, nil
 }
 
 func (s *Service) discover(ctx context.Context, repositories []model.Repository) ([]model.UnpublishedArticle, error) {

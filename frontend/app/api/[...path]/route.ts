@@ -16,6 +16,7 @@ const allowedPaths = new Set([
   "github/connect",
   "github/setup",
   "github/callback",
+  "github/webhook",
 ]);
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -39,7 +40,17 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
 
   const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
   const headers = new Headers();
-  for (const name of ["content-type", "cookie", "origin", "user-agent", "x-forwarded-for", "x-real-ip"]) {
+  for (const name of [
+    "content-type",
+    "cookie",
+    "origin",
+    "user-agent",
+    "x-forwarded-for",
+    "x-real-ip",
+    "x-github-delivery",
+    "x-github-event",
+    "x-hub-signature-256",
+  ]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }

@@ -55,7 +55,7 @@ func (s *Service) ValidateArticle(
 
 	err := ValidateWordsProcentile(strings.Fields(draft.Content))
 	if err != nil {
-		issues = append(issues, fmt.Sprintf("one word is used too many times in the article: %w", err))
+		issues = append(issues, fmt.Sprintf("one word is used too many times in the article: %s", err))
 	}
 
 	validationMessage := strings.Join(issues, "; ")

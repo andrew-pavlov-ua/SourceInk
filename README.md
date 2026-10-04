@@ -2,33 +2,159 @@
 
 SourceInk publishes technical articles from GitHub repositories. Authors keep their Markdown and history in GitHub. SourceInk stores the drafts and published copies it needs to run the site.
 
-The current build has a Next.js frontend, a Go API, PostgreSQL, account login, and GitHub App installation. SourceInk discovers Markdown with frontmatter and stores it as drafts. Publishing and public delivery are not built yet.
+The current build has a Next.js frontend, a Go API, PostgreSQL, account login, GitHub App installation, draft discovery, and manual or automatic publishing. Published articles are served from SourceInk's stored copy.
+
+## Start on a personal server
+
+Use this section to run SourceInk from your own server. You need Docker, a domain name, and an HTTPS reverse proxy. Point the domain at the server and send HTTPS traffic to `127.0.0.1:3000` before you create the GitHub App.
+
+This guide uses `https://sourceink.example.com`. Replace it with your domain.
+
+### 1. Create the configuration files
+
+Run these commands in the SourceInk project folder:
+
+```sh
+cp .env.example .env
+mkdir -p .secrets
+chmod 700 .secrets
+```
+
+`.env` stores configuration and passwords. `.secrets` stores the GitHub private key. Git ignores both paths.
+
+### 2. Create a GitHub App
+
+Open GitHub and click **your profile picture > Settings > Developer settings > GitHub Apps > New GitHub App**.
+
+Give the App a name, such as `My SourceInk`. Fill in these fields:
+
+| GitHub field | Enter this value |
+| --- | --- |
+| Homepage URL | `https://sourceink.example.com` |
+| Callback URL | `https://sourceink.example.com/api/github/callback` |
+| Setup URL | `https://sourceink.example.com/api/github/setup` |
+| Webhook URL | `https://sourceink.example.com/api/github/webhook` |
+| Webhook secret | A long random secret that you will copy into `.env` |
+
+Set the remaining GitHub options:
+
+- Leave **Request user authorization (OAuth) during installation** off.
+- Turn **Active** on for webhooks.
+- Turn **Redirect on update** on.
+- Under **Repository permissions**, set **Contents** to **Read-only**.
+- Under **Subscribe to events**, select **Push**.
+- Keep the App private if only you will use this server.
+
+Click **Create GitHub App**.
+
+### 3. Save the GitHub credentials
+
+On the GitHub App settings page:
+
+1. Copy the **Client ID**.
+2. Create a **Client secret** and copy it. GitHub only shows the full secret once.
+3. Click **Generate a private key**. GitHub downloads a `.pem` file.
+4. Read the App slug from the App URL. For `https://github.com/apps/my-sourceink`, the slug is `my-sourceink`.
+
+Move the downloaded key into `.secrets`:
+
+```sh
+mv /path/to/downloaded-key.pem .secrets/sourceink-publisher.pem
+chmod 600 .secrets/sourceink-publisher.pem
+```
+
+Do not commit the `.pem` file, GitHub client secret, webhook secret, or passwords.
+
+### 4. Fill in `.env`
+
+Open `.env` and set these values:
+
+```dotenv
+APP_ENV=production
+APP_ORIGIN=https://sourceink.example.com
+COOKIE_SECURE=true
+
+POSTGRES_PASSWORD=choose-a-strong-database-password
+DEV_ADMIN_PASSWORD=choose-an-unused-strong-password
+
+GITHUB_PUBLISHER_APP_SLUG=my-sourceink
+GITHUB_PUBLISHER_CLIENT_ID=your-client-id
+GITHUB_PUBLISHER_CLIENT_SECRET=your-client-secret
+GITHUB_WEBHOOK_SECRET=the-same-secret-entered-on-github
+GITHUB_PUBLISHER_PRIVATE_KEY_PATH=.secrets/sourceink-publisher.pem
+```
+
+Compose requires `DEV_ADMIN_PASSWORD` even in production. SourceInk only creates development users when `APP_ENV=development`.
+
+### 5. Start SourceInk
+
+Run:
+
+```sh
+make up
+docker compose ps
+curl --fail http://127.0.0.1:8080/readyz
+```
+
+The last command should return a successful response. Open `https://sourceink.example.com` in your browser.
+
+### 6. Connect your repositories
+
+1. Create an account in SourceInk and sign in.
+2. Open the dashboard and choose **Manage repositories**.
+3. Choose **Connect GitHub**.
+4. GitHub opens the App installation page. Choose your account or organization.
+5. Choose the repositories that SourceInk may read.
+6. Finish the GitHub flow and return to SourceInk.
+
+### 7. Add an article
+
+Create a Markdown file in a connected repository:
+
+```md
+---
+title: My first article
+slug: my-first-article
+description: A short summary of the article.
+tags:
+  - go
+  - postgres
+publish_mode: manual
+---
+
+# My first article
+
+Write the article here.
+```
+
+Push the file to GitHub. SourceInk receives the push and shows the draft in the Articles dashboard. Use `publish_mode: manual` to publish from SourceInk. Use `publish_mode: auto` to publish after SourceInk validates a synced file.
 
 ## Run locally
 
-Copy `.env.example` to `.env`, choose a development database password, then run the API stack and Next.js development server in separate terminals:
+Use local mode when you work on SourceInk code. Complete the GitHub App setup in sections 1 through 4 first. The current Compose configuration always mounts the GitHub App private key, and the backend rejects incomplete GitHub credentials. A copied `.env.example` with its placeholder values cannot start the backend.
+
+Copy the example configuration, set `APP_ENV=development` and `COOKIE_SECURE=false`, then replace every `GITHUB_PUBLISHER_*` value and `GITHUB_WEBHOOK_SECRET` with your GitHub App values. Keep the private key at `.secrets/sourceink-publisher.pem`.
+
+Run the backend and database in one terminal:
 
 ```sh
 cp .env.example .env
 make dev
 ```
 
+Run the frontend in another terminal:
+
 ```sh
 cd frontend
+npm ci
 npm run dev
 ```
 
-Open <http://localhost:3000>. Check the API at <http://localhost:8080/healthz> and <http://localhost:8080/readyz>.
+Open <http://localhost:3000>. `npm ci` installs the exact packages from `package-lock.json`. Run it after a fresh clone, after a lockfile update, or if `npm run dev` cannot find `next` or another package.
 
-`make dev` starts PostgreSQL and the backend. Keep it running while `npm run dev` serves the frontend with hot reload. Run `make up` to start the frontend in Compose too.
+`make dev` starts PostgreSQL and the backend. In development mode, SourceInk also seeds the configured development admin and user accounts. `npm run dev` starts the frontend with hot reload. Run `make up` when you want Docker Compose to start the frontend too.
 
-Set `DEV_ADMIN_EMAIL`, `DEV_ADMIN_USERNAME`, and `DEV_ADMIN_PASSWORD` in the gitignored `.env`. The development server creates that admin account on startup and keeps its password in sync with the file. The seed refuses to run outside `APP_ENV=development`.
-
-Set `DEV_USER_EMAIL`, `DEV_USER_USERNAME`, and `DEV_USER_PASSWORD` for a regular development account. If `DEV_USER_PASSWORD` is empty, local development reuses `DEV_ADMIN_PASSWORD`; set it explicitly when the accounts should have different passwords.
-
-GitHub App setup requires `GITHUB_PUBLISHER_CLIENT_ID` and `GITHUB_PUBLISHER_CLIENT_SECRET`. Set the callback URL to `http://localhost:3000/api/github/callback`. The backend keeps each OAuth attempt in memory for ten minutes. A restart cancels it.
-
-Compose exposes the application on localhost. PostgreSQL stays on the Compose network.
+GitHub cannot send webhooks to `localhost`. Use a public HTTPS forwarding URL ending in `/api/github/webhook` to test GitHub push events on your computer.
 
 ## Validate
 
@@ -37,7 +163,7 @@ make test
 make build
 ```
 
-The backend routes requests with `chi`, queries PostgreSQL with `sqlx`, and runs migrations through `goose`. Local Compose startup applies pending migrations through `AUTO_MIGRATE=true`.
+The backend routes requests with `chi`, queries PostgreSQL with `sqlx`, and runs migrations through `goose`. The current Compose configuration sets `AUTO_MIGRATE=true`, so `make dev` and `make up` apply pending migrations when the backend starts.
 
 Migration commands:
 
@@ -47,7 +173,7 @@ make migrate-status
 make migration name=add_articles
 ```
 
-Run `sourceink-migrate up` during a production release. Set `COOKIE_SECURE=true` behind HTTPS.
+`make migrate` runs `sourceink-migrate up` manually, but it does not disable the startup migration. For a controlled production migration step, set `AUTO_MIGRATE=false` in the deployment configuration and run `sourceink-migrate up` before starting the backend. Set `COOKIE_SECURE=true` behind HTTPS.
 
 ## License
 

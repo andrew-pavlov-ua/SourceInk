@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { JetBrains_Mono, Schibsted_Grotesk, Source_Serif_4 } from "next/font/google";
+import Script from "next/script";
 import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
@@ -21,7 +22,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
   return (
     <html lang="en" data-theme="dark" className={`${sans.variable} ${serif.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
-        <script
+        <Script
+          id="sourceink-theme"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: "try{document.documentElement.dataset.theme=localStorage.getItem('sourceink-theme')==='light'?'light':'dark'}catch{}",
           }}
