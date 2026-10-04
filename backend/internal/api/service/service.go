@@ -11,12 +11,14 @@ import (
 type Service struct {
 	store    *db.Store
 	articles *articleService.Service
+	reviews  *ReviewService
 }
 
 func NewService(store *db.Store, articles *articleService.Service) Service {
 	return Service{
 		store:    store,
 		articles: articles,
+		reviews:  NewReviewService(store),
 	}
 }
 

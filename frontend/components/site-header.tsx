@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getCurrentUser, SESSION_COOKIE_NAME, type User } from "@/lib/backend";
 
@@ -19,10 +20,7 @@ export async function SiteHeader() {
   return (
     <header className="site-header">
       <div className="site-brand-group">
-        <Link className="wordmark" href="/" aria-label="SourceInk home">
-          <span className="wordmark-mark" aria-hidden="true">S</span>
-          <span>SourceInk</span>
-        </Link>
+        <Logo />
         <nav className="site-product-nav" aria-label="Product navigation">
           <Link href="/product">Product</Link>
           <Link href="/docs">Docs</Link>
@@ -32,13 +30,7 @@ export async function SiteHeader() {
       <div className="site-nav">
         <ThemeToggle />
         {user ? (
-          <div className="site-session">
-            <Link className="site-user" href="/dashboard" aria-label={`Open dashboard for ${user.username}`}>
-              <span className="site-user-avatar" aria-hidden="true">{user.username.charAt(0).toUpperCase()}</span>
-              <span className="site-username">@{user.username}</span>
-            </Link>
-            <Link className="button button-small" href="/dashboard">Dashboard</Link>
-          </div>
+          <Link className="button button-small" href="/dashboard">Dashboard</Link>
         ) : (
           <>
             <Link className="text-link" href="/login">Log in</Link>

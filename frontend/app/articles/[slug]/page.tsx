@@ -1,15 +1,17 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ArticleReview } from "@/components/article-review";
 import { PublicPageShell } from "@/components/public-page-shell";
-import { getPublishedArticles, type PublishedArticle } from "@/lib/backend";
+import { getPublishedArticles, type ReviewedPublishedArticle } from "@/lib/backend";
 
 type PublishedArticlePageProps = {
   params: Promise<{ slug: string }>;
 };
 
-function description(article: PublishedArticle) {
+function description(article: ReviewedPublishedArticle) {
   if (typeof article.frontmatter !== "object" || article.frontmatter === null) return "";
   const value = (article.frontmatter as Record<string, unknown>).description;
   return typeof value === "string" ? value : "";
@@ -28,9 +30,10 @@ function readingTime(markdown: string) {
 
 export default async function PublishedArticlePage({ params }: PublishedArticlePageProps) {
   const { slug } = await params;
-  let articles: PublishedArticle[];
+  let articles: ReviewedPublishedArticle[];
   try {
-    articles = await getPublishedArticles();
+    const cookieStore = await cookies();
+    articles = await getPublishedArticles(cookieStore.toString());
   } catch {
     return (
       <PublicPageShell>
@@ -68,6 +71,7 @@ export default async function PublishedArticlePage({ params }: PublishedArticleP
         <div className="reader-body">
           <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{article.markdown}</ReactMarkdown>
         </div>
+        <ArticleReview articleId={article.id} gitBlobSha={article.git_blob_sha} initialSummary={article.reviews} />
       </article>
     </PublicPageShell>
   );

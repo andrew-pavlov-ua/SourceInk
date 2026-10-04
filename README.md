@@ -48,3 +48,13 @@ make migration name=add_articles
 ```
 
 Run `sourceink-migrate up` during a production release. Set `COOKIE_SECURE=true` behind HTTPS.
+
+## License
+
+Copyright (C) 2026 Andrew Pavlov.
+
+SourceInk is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, version 3. See [LICENSE](LICENSE) for the full text.
+
+If you run a modified version of SourceInk as a network service, the AGPL requires you to offer your users the corresponding source code.
+
+Articles that authors publish through SourceInk stay under the license each author chooses. The AGPL covers only the SourceInk software.

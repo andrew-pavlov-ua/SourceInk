@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/backend";
+import { ConnectEmailForm } from "@/components/connect-email-form";
+import { GitHubMark } from "@/components/github-mark";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -49,20 +51,31 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </dl>
         </section>
 
+        {!user.email && githubConnected && (
+          <section aria-labelledby="email-settings-heading">
+            <div>
+              <h2 id="email-settings-heading">Email sign-in</h2>
+              <p>Add an email and password so you can access this same account without GitHub.</p>
+            </div>
+            <ConnectEmailForm />
+          </section>
+        )}
+
         <section aria-labelledby="github-settings-heading">
           <div>
             <h2 id="github-settings-heading">GitHub login</h2>
             <p>Use GitHub or your email and password to open the same SourceInk account.</p>
           </div>
           <div className="github-account-card">
-            <span className={`github-account-mark${githubConnected ? " github-account-mark-connected" : ""}`} aria-hidden="true">GH</span>
             <div className="github-account-copy">
               <strong>{githubConnected ? (user.github_login ? `@${user.github_login}` : "GitHub connected") : "Not connected"}</strong>
-              <p>{githubConnected ? "You can sign in with either method." : "Existing GitHub-only repositories and articles will move to this account."}</p>
+              <p>{githubConnected
+                ? (user.email ? "You can sign in with either method." : "GitHub is currently your only sign-in method.")
+                : "Existing GitHub-only repositories and articles will move to this account."}</p>
             </div>
             {!githubConnected && (
               <form action="/api/github/connect" method="get">
-                <button className="button button-small" type="submit">Connect GitHub</button>
+                <button className="button button-small" type="submit"><GitHubMark />Connect GitHub</button>
               </form>
             )}
           </div>

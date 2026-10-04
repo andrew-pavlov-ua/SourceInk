@@ -325,6 +325,61 @@ func (s *Store) FindOrCreateUserByGitHub(
 	return user, nil
 }
 
+func (s *Store) SetEmailPasswordForGitHubUser(
+	ctx context.Context,
+	userID, email, passwordHash string,
+) (model.User, error) {
+	if userID == "" || email == "" || passwordHash == "" {
+		return model.User{}, errors.New("invalid email sign-in connection")
+	}
+
+	var user model.User
+	err := s.db.GetContext(ctx, &user, `
+		update users
+		set email = $2, password_hash = $3, updated_at = now()
+		where id = $1
+			and github_user_id is not null
+			and email is null
+			and password_hash is null
+		returning id, email, username, github_user_id,
+			coalesce(github_login, '') as github_login,
+			coalesce(github_avatar_url, '') as github_avatar_url, role, created_at
+	`, userID, email, passwordHash)
+	if err == nil {
+		return user, nil
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return model.User{}, model.ErrEmailTaken
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return model.User{}, fmt.Errorf("connect email sign-in: %w", err)
+	}
+
+	var state struct {
+		HasGitHub   bool `db:"has_github"`
+		HasEmail    bool `db:"has_email"`
+		HasPassword bool `db:"has_password"`
+	}
+	if err := s.db.GetContext(ctx, &state, `
+		select github_user_id is not null as has_github,
+			email is not null as has_email,
+			password_hash is not null as has_password
+		from users
+		where id = $1
+	`, userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.User{}, model.ErrEmailSignInNotAllowed
+		}
+		return model.User{}, fmt.Errorf("check email sign-in state: %w", err)
+	}
+	if state.HasEmail || state.HasPassword {
+		return model.User{}, model.ErrEmailSignInAlreadySet
+	}
+	return model.User{}, model.ErrEmailSignInNotAllowed
+}
+
 func refreshGitHubIdentity(
 	ctx context.Context,
 	tx *sqlx.Tx,

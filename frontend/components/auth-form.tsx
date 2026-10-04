@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
+import { GitHubMark } from "@/components/github-mark";
 
 type AuthMode = "login" | "register";
 type PendingAction = "email" | "github" | null;
@@ -57,6 +58,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
   return (
     <form className="auth-form" onSubmit={submit}>
       <button className="button auth-submit auth-github" type="button" onClick={beginGitHubLogin} disabled={pendingAction !== null}>
+        <GitHubMark />
         {pendingAction === "github" ? "Connecting to GitHub…" : "Continue with GitHub"}
       </button>
       <div className="auth-divider" role="separator">or use email</div>

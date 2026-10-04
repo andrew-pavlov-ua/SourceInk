@@ -9,12 +9,18 @@ import (
 
 var (
 	ErrEmailTaken                 = errors.New("email is already registered")
+	ErrEmailSignInAlreadySet      = errors.New("email sign-in is already connected")
+	ErrEmailSignInNotAllowed      = errors.New("email sign-in can only be added to a GitHub account")
 	ErrUsernameTaken              = errors.New("username is already registered")
 	ErrGitHubUsernameTaken        = errors.New("GitHub username is already connected to another account")
 	ErrGitHubAccountConflict      = errors.New("GitHub account is connected to another account")
 	ErrGitHubInstallationConflict = errors.New("github installation is connected to another user")
 	ErrArticleNotFound            = errors.New("article draft not found")
 	ErrArticleNotPublishable      = errors.New("article draft cannot be published")
+	ErrPublishedArticleNotFound   = errors.New("published article not found")
+	ErrArticleReviewStale         = errors.New("article review targets a stale revision")
+	ErrArticleReviewNotFound      = errors.New("article review not found")
+	ErrArticleReviewInvalid       = errors.New("article review is invalid")
 )
 
 type User struct {
@@ -44,6 +50,7 @@ type AccountStore interface {
 	FindUserByEmail(ctx context.Context, email string) (User, string, error)
 	CreateSession(ctx context.Context, userID string, tokenHash []byte, expiresAt time.Time) error
 	FindOrCreateUserByGitHub(ctx context.Context, githubUser GitHubUser, tokenHash []byte, expiresAt time.Time) (User, error)
+	SetEmailPasswordForGitHubUser(ctx context.Context, userID, email, passwordHash string) (User, error)
 	UserBySession(ctx context.Context, tokenHash []byte) (User, error)
 	DeleteSession(ctx context.Context, tokenHash []byte) error
 }
@@ -149,4 +156,56 @@ type Frontmatter struct {
 	Description string   `db:"description" yaml:"description" json:"description"`
 	Tags        []string `db:"tags" yaml:"tags" json:"tags"`
 	PublishMode string   `db:"publish_mode" yaml:"publish_mode" json:"publish_mode"`
+}
+
+type Verdict string
+
+const (
+	VerdictApprove        Verdict = "approve"
+	VerdictRequestChanges Verdict = "request_changes"
+)
+
+type Reason string
+
+const (
+	ReasonIncorrect Reason = "incorrect"
+	ReasonOutdated  Reason = "outdated"
+	ReasonUnclear   Reason = "unclear"
+)
+
+type Review struct {
+	ID         string    `db:"id" json:"id"`
+	ArticleID  string    `db:"article_id" json:"article_id"`
+	GitBlobSHA string    `db:"git_blob_sha" json:"git_blob_sha"`
+	ReviewerID string    `db:"reviewer_id" json:"-"`
+	Verdict    Verdict   `db:"verdict" json:"verdict"`
+	Reason     *Reason   `db:"reason" json:"reason,omitempty"`
+	CreatedAt  time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt  time.Time `db:"updated_at" json:"updated_at"`
+}
+
+type ReviewReasonCounts struct {
+	Incorrect int `json:"incorrect"`
+	Outdated  int `json:"outdated"`
+	Unclear   int `json:"unclear"`
+}
+
+type ViewerReview struct {
+	Verdict Verdict `json:"verdict"`
+	Reason  *Reason `json:"reason,omitempty"`
+}
+
+type ReviewSummary struct {
+	ArticleID           string             `json:"article_id"`
+	GitBlobSHA          string             `json:"git_blob_sha"`
+	ApproveCount        int                `json:"approve_count"`
+	RequestChangesCount int                `json:"request_changes_count"`
+	RequestReasons      ReviewReasonCounts `json:"request_reasons"`
+	ViewerReview        *ViewerReview      `json:"viewer_review"`
+	Authenticated       bool               `json:"authenticated"`
+}
+
+type PublishedArticle struct {
+	Article
+	Reviews ReviewSummary `json:"reviews"`
 }

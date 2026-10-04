@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { PublicPageShell } from "@/components/public-page-shell";
-import { LEGAL_EFFECTIVE_DATE, LEGAL_OPERATOR_NAME } from "@/lib/legal";
+import { COPYRIGHT_HOLDER, LEGAL_EFFECTIVE_DATE, LEGAL_OPERATOR_NAME, SOURCE_CODE_URL } from "@/lib/legal";
 
 export const metadata: Metadata = { title: "License" };
 
@@ -36,8 +36,12 @@ export default function LicensePage() {
             <p>SourceInk grants you a limited, non-exclusive, non-transferable, revocable right to use the service under the Terms &amp; Conditions. You may not copy, resell, reverse engineer, or exploit the service except where applicable law permits it.</p>
           </section>
           <section>
-            <h2>SourceInk software and branding</h2>
-            <p>SourceInk and its branding, interface, and service software remain protected by copyright and other intellectual-property laws. Unless a separate open-source license accompanies specific source code, SourceInk reserves all rights in that code.</p>
+            <h2>SourceInk source code</h2>
+            <p>The SourceInk software is copyright © 2026 {COPYRIGHT_HOLDER} and is licensed under the <a href="https://www.gnu.org/licenses/agpl-3.0.html">GNU Affero General Public License, version 3</a>. You may run, study, change, and share it under that license. If you offer a modified version to users over a network, you must offer them its source code. The source code for this service is available at <a href={SOURCE_CODE_URL}>{SOURCE_CODE_URL.replace("https://", "")}</a>.</p>
+          </section>
+          <section>
+            <h2>Name and logo</h2>
+            <p>The AGPL covers the code, not the SourceInk name or logo. If you run a modified version, give it a different name so readers do not confuse it with this service.</p>
           </section>
           <section>
             <h2>Third-party services</h2>

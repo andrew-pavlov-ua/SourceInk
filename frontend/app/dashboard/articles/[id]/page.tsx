@@ -117,7 +117,7 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
     : "";
   const publishDisabledReason = draft
     ? draft.validation_error
-      ? "Fix the frontmatter error before publishing."
+      ? "Resolve the draft warning before publishing."
       : !draft.present
         ? "This source file is no longer present in the repository."
         : !draft.title.trim() || !draft.slug.trim() || !draft.publish_mode
@@ -160,8 +160,8 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
           <p>{isDraft ? "Repository draft configuration" : "Published snapshot configuration"}</p>
         </div>
         <div className="article-heading-actions">
-          <span className={`article-status${draft?.validation_error || (published && published.source_state !== "available") ? " article-status-error" : ""}`}>
-            {draft?.validation_error ? "Needs attention" : isDraft ? "Draft" : published!.source_state.replace("_", " ")}
+          <span className={`article-status${draft?.validation_error ? " article-status-warning" : published && published.source_state !== "available" ? " article-status-error" : ""}`}>
+            {draft?.validation_error ? "Warning" : isDraft ? "Draft" : published!.source_state.replace("_", " ")}
           </span>
           {draft && (
             <PublishArticleButton
@@ -174,8 +174,8 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
       </header>
 
       {draft?.validation_error && (
-        <section className="article-validation" aria-labelledby="validation-heading" role="alert">
-          <h2 id="validation-heading">Frontmatter needs attention</h2>
+        <section className="article-validation article-validation-warning" aria-labelledby="validation-heading" role="status">
+          <h2 id="validation-heading">Draft warning</h2>
           <p>{draft.validation_error}</p>
         </section>
       )}

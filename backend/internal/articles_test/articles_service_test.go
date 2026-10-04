@@ -1,10 +1,12 @@
-package articles
+package articles_test
 
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
+	articles "sourceink/backend/internal/articles"
 	"sourceink/backend/internal/model"
 )
 
@@ -106,7 +108,7 @@ func TestListForUserReturnsStoredArticlesWithoutRediscovery(t *testing.T) {
 		unpublished: []model.UnpublishedArticle{{ID: "draft-id"}},
 	}
 	loader := &serviceTestLoader{}
-	service := NewService(store, loader)
+	service := articles.NewService(store, loader)
 
 	articles, err := service.ListForUser(context.Background(), "user-id")
 	if err != nil {
@@ -129,7 +131,7 @@ func TestListForUserDiscoversAndSavesArticlesWhenStorageIsEmpty(t *testing.T) {
 	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
 		repository.ID: {{RepositoryID: repository.ID, SourcePath: "guides/setup.md"}},
 	}}
-	service := NewService(store, loader)
+	service := articles.NewService(store, loader)
 
 	articles, err := service.ListForUser(context.Background(), "user-id")
 	if err != nil {
@@ -143,6 +145,9 @@ func TestListForUserDiscoversAndSavesArticlesWhenStorageIsEmpty(t *testing.T) {
 	}
 	if len(articles.UnpublishedArticles) != 1 || articles.UnpublishedArticles[0].ID != "saved-guides/setup.md" {
 		t.Fatalf("unpublished articles = %#v", articles.UnpublishedArticles)
+	}
+	if articles.UnpublishedArticles[0].ValidationError == nil {
+		t.Fatal("discovered invalid draft has no validation warning")
 	}
 	if store.reconcileCalls != 1 {
 		t.Fatalf("duplicate slug checks = %d, want 1", store.reconcileCalls)
@@ -161,7 +166,7 @@ func TestListForUserDoesNotAutomaticallyPublishDiscoveredArticles(t *testing.T) 
 			Present:      true,
 		}},
 	}}
-	service := NewService(store, loader)
+	service := articles.NewService(store, loader)
 
 	if _, err := service.ListForUser(context.Background(), "user-id"); err != nil {
 		t.Fatalf("ListForUser() error = %v", err)
@@ -177,7 +182,7 @@ func TestRunOnceUsesSharedDiscovery(t *testing.T) {
 	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
 		repository.ID: {{RepositoryID: repository.ID, SourcePath: "README.md"}},
 	}}
-	worker := NewArticlesWorker(NewService(store, loader))
+	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
 
 	articles, err := worker.RunOnce(context.Background())
 	if err != nil {
@@ -193,9 +198,10 @@ func TestRunOnceUsesSharedDiscovery(t *testing.T) {
 
 func TestDiscoverIncludesRepositoryNameInLoaderError(t *testing.T) {
 	wantErr := errors.New("GitHub unavailable")
-	service := NewService(&serviceTestStore{}, &serviceTestLoader{err: wantErr})
+	store := &serviceTestStore{userRepositories: []model.Repository{{FullName: "octocat/docs"}}}
+	service := articles.NewService(store, &serviceTestLoader{err: wantErr})
 
-	_, err := service.discover(context.Background(), []model.Repository{{FullName: "octocat/docs"}})
+	_, err := service.ListForUser(context.Background(), "user-id")
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("discover() error = %v, want %v", err, wantErr)
 	}
@@ -205,7 +211,7 @@ func TestDiscoverIncludesRepositoryNameInLoaderError(t *testing.T) {
 }
 
 func TestPublishArticleWrapsNotFoundForMissingIdentity(t *testing.T) {
-	service := NewService(&serviceTestStore{}, &serviceTestLoader{})
+	service := articles.NewService(&serviceTestStore{}, &serviceTestLoader{})
 
 	_, err := service.PublishArticle(context.Background(), "", "draft-id")
 	if !errors.Is(err, model.ErrArticleNotFound) {
@@ -215,7 +221,7 @@ func TestPublishArticleWrapsNotFoundForMissingIdentity(t *testing.T) {
 
 func TestPublishArticleWrapsNotFoundForUnauthorizedDraft(t *testing.T) {
 	store := &serviceTestStore{findPublishErr: model.ErrArticleNotFound}
-	service := NewService(store, &serviceTestLoader{})
+	service := articles.NewService(store, &serviceTestLoader{})
 
 	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
 	if !errors.Is(err, model.ErrArticleNotFound) {
@@ -234,7 +240,29 @@ func TestPublishArticleRejectsInvalidDraft(t *testing.T) {
 		GitBlobSHA: "blob-sha",
 		Present:    false,
 	}}
-	service := NewService(store, &serviceTestLoader{})
+	service := articles.NewService(store, &serviceTestLoader{})
+
+	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
+	if !errors.Is(err, model.ErrArticleNotPublishable) {
+		t.Fatalf("PublishArticle() error = %v, want ErrArticleNotPublishable", err)
+	}
+	if store.publishCalls != 0 {
+		t.Fatalf("PublishArticle() store calls = %d, want 0", store.publishCalls)
+	}
+}
+
+func TestPublishArticleTreatsDraftWarningAsCritical(t *testing.T) {
+	store := &serviceTestStore{publishDraft: model.UnpublishedArticle{
+		ID: "draft-id",
+		Frontmatter: model.Frontmatter{
+			Title:       strings.Repeat("a", 121),
+			Slug:        "article",
+			PublishMode: "manual",
+		},
+		GitBlobSHA: "blob-sha",
+		Present:    true,
+	}}
+	service := articles.NewService(store, &serviceTestLoader{})
 
 	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
 	if !errors.Is(err, model.ErrArticleNotPublishable) {
@@ -260,7 +288,7 @@ func TestPublishArticleStoresAuthorizedDraft(t *testing.T) {
 		},
 		publishResult: model.Article{ID: "article-id"},
 	}
-	service := NewService(store, &serviceTestLoader{})
+	service := articles.NewService(store, &serviceTestLoader{})
 
 	article, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
 	if err != nil {
@@ -279,7 +307,7 @@ func TestPublishArticleStoresAuthorizedDraft(t *testing.T) {
 
 func TestPublishArticleRejectsAutomaticDraft(t *testing.T) {
 	store := &serviceTestStore{publishDraft: publishableDraft("auto")}
-	service := NewService(store, &serviceTestLoader{})
+	service := articles.NewService(store, &serviceTestLoader{})
 
 	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
 	if !errors.Is(err, model.ErrArticleNotPublishable) {
@@ -299,7 +327,7 @@ func TestPublishArticleRejectsDuplicateSlugValidation(t *testing.T) {
 		Present:         true,
 		ValidationError: &validationError,
 	}}
-	service := NewService(store, &serviceTestLoader{})
+	service := articles.NewService(store, &serviceTestLoader{})
 
 	_, err := service.PublishArticle(context.Background(), "user-id", "draft-id")
 	if !errors.Is(err, model.ErrArticleNotPublishable) {
@@ -312,7 +340,7 @@ func TestPublishArticleRejectsDuplicateSlugValidation(t *testing.T) {
 
 func TestAutoPublishArticleRejectsManualDraft(t *testing.T) {
 	store := &serviceTestStore{autoPublishDraft: publishableDraft("manual")}
-	service := NewService(store, &serviceTestLoader{})
+	service := articles.NewService(store, &serviceTestLoader{})
 
 	_, err := service.AutoPublishArticle(context.Background(), "draft-id")
 	if !errors.Is(err, model.ErrArticleNotPublishable) {
@@ -328,7 +356,7 @@ func TestAutoPublishArticleStoresAutomaticDraftWithoutUserID(t *testing.T) {
 		autoPublishDraft:  publishableDraft("auto"),
 		autoPublishResult: model.Article{ID: "article-id"},
 	}
-	service := NewService(store, &serviceTestLoader{})
+	service := articles.NewService(store, &serviceTestLoader{})
 
 	article, err := service.AutoPublishArticle(context.Background(), "draft-id")
 	if err != nil {

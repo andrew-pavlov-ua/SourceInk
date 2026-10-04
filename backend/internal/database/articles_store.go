@@ -185,8 +185,69 @@ func (s *Store) ListUserArticles(ctx context.Context, userID string) ([]model.Ar
 	return s.listArticles(ctx, "where a.owner_id = $1\norder by a.published_at desc, a.id", userID)
 }
 
-func (s *Store) ListPublishedArticles(ctx context.Context) ([]model.Article, error) {
-	return s.listArticles(ctx, "order by a.published_at desc, a.id")
+func (s *Store) ListPublishedArticles(ctx context.Context, viewerID string) ([]model.PublishedArticle, error) {
+	type publishedArticleRow struct {
+		model.Article
+		ApproveCount        int            `db:"approve_count"`
+		RequestChangesCount int            `db:"request_changes_count"`
+		IncorrectCount      int            `db:"incorrect_count"`
+		OutdatedCount       int            `db:"outdated_count"`
+		UnclearCount        int            `db:"unclear_count"`
+		ViewerVerdict       sql.NullString `db:"viewer_verdict"`
+		ViewerReason        sql.NullString `db:"viewer_reason"`
+	}
+
+	var viewer any
+	if viewerID != "" {
+		viewer = viewerID
+	}
+
+	rows := make([]publishedArticleRow, 0)
+	err := s.db.SelectContext(ctx, &rows, `
+		select `+articleColumns+`,
+			count(ar.id) filter (where ar.verdict = 'approve') as approve_count,
+			count(ar.id) filter (where ar.verdict = 'request_changes') as request_changes_count,
+			count(ar.id) filter (where ar.reason = 'incorrect') as incorrect_count,
+			count(ar.id) filter (where ar.reason = 'outdated') as outdated_count,
+			count(ar.id) filter (where ar.reason = 'unclear') as unclear_count,
+			max(ar.verdict) filter (where ar.reviewer_id = $1::uuid) as viewer_verdict,
+			max(ar.reason) filter (where ar.reviewer_id = $1::uuid) as viewer_reason
+		`+articleFrom+`
+		left join article_reviews as ar
+			on ar.article_id = a.id
+			and ar.git_blob_sha = a.git_blob_sha
+		group by a.id, u.username
+		order by a.published_at desc, a.id
+	`, viewer)
+	if err != nil {
+		return nil, fmt.Errorf("list published articles with reviews: %w", err)
+	}
+
+	articles := make([]model.PublishedArticle, 0, len(rows))
+	for _, row := range rows {
+		summary := model.ReviewSummary{
+			ArticleID:           row.ID,
+			GitBlobSHA:          row.GitBlobSHA,
+			ApproveCount:        row.ApproveCount,
+			RequestChangesCount: row.RequestChangesCount,
+			RequestReasons: model.ReviewReasonCounts{
+				Incorrect: row.IncorrectCount,
+				Outdated:  row.OutdatedCount,
+				Unclear:   row.UnclearCount,
+			},
+			Authenticated: viewerID != "",
+		}
+		if row.ViewerVerdict.Valid {
+			viewerReview := model.ViewerReview{Verdict: model.Verdict(row.ViewerVerdict.String)}
+			if row.ViewerReason.Valid {
+				reason := model.Reason(row.ViewerReason.String)
+				viewerReview.Reason = &reason
+			}
+			summary.ViewerReview = &viewerReview
+		}
+		articles = append(articles, model.PublishedArticle{Article: row.Article, Reviews: summary})
+	}
+	return articles, nil
 }
 
 func (s *Store) listArticles(ctx context.Context, filter string, args ...any) ([]model.Article, error) {

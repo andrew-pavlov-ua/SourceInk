@@ -21,20 +21,16 @@ export default function DocsPage() {
         </aside>
         <article className="docs-content">
           <header>
-            <p className="page-kicker"><span aria-hidden="true" />Docs</p>
             <h1>Repository setup and article discovery</h1>
             <p>Connect GitHub, then inspect the drafts SourceInk finds.</p>
           </header>
           {docs.map((item, index) => (
             <section id={item.id} key={item.id}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
+              <span>{index + 1}</span>
               <div><h2>{item.title}</h2><p>{item.body}</p></div>
             </section>
           ))}
-          <div className="docs-next">
-            <span>Next</span>
-            <Link href="/register">Create an account →</Link>
-          </div>
+          <p className="docs-next">Ready to connect a repository? <Link href="/register">Create an account</Link></p>
         </article>
       </div>
     </PublicPageShell>

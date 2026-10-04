@@ -9,8 +9,7 @@ export default function DomainsPage() {
         <div><h1 id="domains-heading">Domains</h1><p>Custom domains require public article delivery.</p></div>
         <button className="button button-small" type="button" disabled>Add domain</button>
       </header>
-      <div className="empty-row">
-        <span className="empty-row-icon" aria-hidden="true">⌁</span>
+      <div className="empty-row empty-row-full">
         <div><h2>No custom domains yet</h2><p>SourceInk cannot serve public articles yet.</p></div>
       </div>
     </section>

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"sourceink/backend/internal/model"
 )
@@ -94,8 +93,15 @@ func (s *Service) PublishArticle(ctx context.Context, userID, draftID string) (m
 		return model.Article{}, fmt.Errorf("load article draft %s for publication: %w", draftID, err)
 	}
 
-	if !draft.Present || draft.ValidationError != nil || strings.TrimSpace(draft.Title) == "" || strings.TrimSpace(draft.Slug) == "" ||
-		draft.PublishMode != string(model.ArticlePublishModeManual) {
+	draft, err = s.ValidateArticle(ctx, draft)
+	if err != nil {
+		if errors.Is(err, model.ErrArticleNotPublishable) {
+			return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, model.ErrArticleNotPublishable)
+		}
+		return model.Article{}, fmt.Errorf("validate article draft %s for publication: %w", draftID, err)
+	}
+
+	if draft.PublishMode != string(model.ArticlePublishModeManual) {
 		return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, model.ErrArticleNotPublishable)
 	}
 
@@ -126,8 +132,15 @@ func (s *Service) AutoPublishArticle(ctx context.Context, draftID string) (model
 		return model.Article{}, fmt.Errorf("load article draft %s for publication: %w", draftID, err)
 	}
 
-	if !draft.Present || draft.ValidationError != nil || strings.TrimSpace(draft.Title) == "" || strings.TrimSpace(draft.Slug) == "" ||
-		draft.PublishMode != string(model.ArticlePublishModeAuto) {
+	draft, err = s.ValidateArticle(ctx, draft)
+	if err != nil {
+		if errors.Is(err, model.ErrArticleNotPublishable) {
+			return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, model.ErrArticleNotPublishable)
+		}
+		return model.Article{}, fmt.Errorf("validate article draft %s for auto-publication: %w", draftID, err)
+	}
+
+	if draft.PublishMode != string(model.ArticlePublishModeAuto) {
 		return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, model.ErrArticleNotPublishable)
 	}
 
@@ -184,6 +197,12 @@ func (s *Service) discover(ctx context.Context, repositories []model.Repository)
 func (s *Service) save(ctx context.Context, articles []model.UnpublishedArticle) error {
 	for i := range articles {
 		article := &articles[i]
+		validated, err := s.ValidateArticle(ctx, *article)
+		if err != nil && !errors.Is(err, model.ErrArticleNotPublishable) {
+			return fmt.Errorf("validate unpublished article %s: %w", article.SourcePath, err)
+		}
+		*article = validated
+
 		if err := s.store.UpsertUnpublishedArticle(ctx, article); err != nil {
 			return fmt.Errorf("upsert unpublished article %s: %w", article.SourcePath, err)
 		}

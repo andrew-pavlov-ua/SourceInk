@@ -5,7 +5,7 @@ export function AuthShell({ title, description, children }: { title: string; des
   return (
     <>
       <SiteHeader />
-      <main id="main-content" className="auth-layout shell">
+      <main id="main-content" className="auth-layout">
         <section className="auth-intro">
           <h1>{title}</h1>
           <p>{description}</p>

@@ -11,8 +11,8 @@ func (s *Service) ListArticles(ctx context.Context, userID string) (model.UserAr
 	return s.articles.ListForUser(ctx, userID)
 }
 
-func (s *Service) ListPublishedArticles(ctx context.Context) ([]model.Article, error) {
-	return s.store.ListPublishedArticles(ctx)
+func (s *Service) ListPublishedArticles(ctx context.Context, viewerID string) ([]model.PublishedArticle, error) {
+	return s.store.ListPublishedArticles(ctx, viewerID)
 }
 
 func (s *Service) PublishArticle(ctx context.Context, userID, draftID string) (model.Article, error) {

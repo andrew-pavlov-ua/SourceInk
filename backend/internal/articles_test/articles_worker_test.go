@@ -1,31 +1,21 @@
-package articles
+package articles_test
 
 import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
+	articles "sourceink/backend/internal/articles"
 	"sourceink/backend/internal/model"
 )
 
-func TestRunOnIntervalWaitsForIntervalAndRepeatsUntilCancelled(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+func TestArticlesWorkerStartStopsWhenContextIsCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	worker := articles.NewArticlesWorker(articles.NewService(&serviceTestStore{}, &serviceTestLoader{}))
 
-	runs := 0
-	err := runOnInterval(ctx, time.Millisecond, func() error {
-		runs++
-		if runs == 2 {
-			cancel()
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("runOnInterval() error = %v", err)
-	}
-	if runs < 2 {
-		t.Fatalf("runs = %d, want at least 2", runs)
+	if err := worker.Start(ctx); err != nil {
+		t.Fatalf("Start() error = %v", err)
 	}
 }
 
@@ -35,7 +25,7 @@ func TestSyncOnceDiscoversAndSavesArticles(t *testing.T) {
 	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
 		repository.ID: {{RepositoryID: repository.ID, SourcePath: "README.md"}},
 	}}
-	worker := NewArticlesWorker(NewService(store, loader))
+	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
 
 	articles, err := worker.SyncOnce(context.Background())
 	if err != nil {
@@ -59,7 +49,7 @@ func TestSyncOnceAutomaticallyPublishesOnlyAutomaticDrafts(t *testing.T) {
 			{RepositoryID: repository.ID, SourcePath: "manual.md", Frontmatter: model.Frontmatter{Title: "Manual", Slug: "manual", PublishMode: "manual"}, GitBlobSHA: "other-blob", Present: true},
 		},
 	}}
-	worker := NewArticlesWorker(NewService(store, loader))
+	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
 
 	if _, err := worker.SyncOnce(context.Background()); err != nil {
 		t.Fatalf("SyncOnce() error = %v", err)
@@ -81,7 +71,7 @@ func TestSyncOnceStopsBeforeAutoPublishWhenSlugValidationFails(t *testing.T) {
 	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
 		repository.ID: {{RepositoryID: repository.ID, SourcePath: "automatic.md", Frontmatter: model.Frontmatter{Title: "Automatic", Slug: "automatic", PublishMode: "auto"}}},
 	}}
-	worker := NewArticlesWorker(NewService(store, loader))
+	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
 
 	_, err := worker.SyncOnce(context.Background())
 	if err == nil || err.Error() != "validate article slugs: duplicate slug validation failed" {
@@ -89,38 +79,5 @@ func TestSyncOnceStopsBeforeAutoPublishWhenSlugValidationFails(t *testing.T) {
 	}
 	if store.autoPublishCalls != 0 {
 		t.Fatalf("auto-publish calls = %d, want 0", store.autoPublishCalls)
-	}
-}
-
-func TestRunOnIntervalReturnsRunError(t *testing.T) {
-	wantErr := errors.New("sync failed")
-	runs := 0
-
-	err := runOnInterval(context.Background(), time.Millisecond, func() error {
-		runs++
-		return wantErr
-	})
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("runOnInterval() error = %v, want %v", err, wantErr)
-	}
-	if runs != 1 {
-		t.Fatalf("runs = %d, want 1", runs)
-	}
-}
-
-func TestRunOnIntervalDoesNotRunAfterCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	runs := 0
-	err := runOnInterval(ctx, time.Millisecond, func() error {
-		runs++
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("runOnInterval() error = %v", err)
-	}
-	if runs != 0 {
-		t.Fatalf("runs = %d, want 0", runs)
 	}
 }

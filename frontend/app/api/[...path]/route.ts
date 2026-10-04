@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 const allowedPaths = new Set([
   "auth/register",
   "auth/login",
+  "auth/email",
   "auth/logout",
   "auth/me",
   "auth/github",
@@ -22,7 +23,11 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 function isAllowedPath(path: string[]) {
   const joinedPath = path.join("/");
   return allowedPaths.has(joinedPath)
-    || (path.length === 3 && path[0] === "articles" && uuidPattern.test(path[1]) && path[2] === "publish");
+    || (path.length === 3 && path[0] === "articles" && uuidPattern.test(path[1]) && path[2] === "publish")
+    || (path.length === 3
+      && path[0] === "published-articles"
+      && uuidPattern.test(path[1])
+      && (path[2] === "review" || path[2] === "reviews"));
 }
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
@@ -63,3 +68,5 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
 
 export const GET = proxy;
 export const POST = proxy;
+export const PUT = proxy;
+export const DELETE = proxy;

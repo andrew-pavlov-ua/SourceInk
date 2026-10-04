@@ -45,6 +45,24 @@ func (h *Handler) currentUser(w http.ResponseWriter, r *http.Request) (model.Use
 	return user, true
 }
 
+func (h *Handler) optionalCurrentUser(w http.ResponseWriter, r *http.Request) (model.User, bool) {
+	cookie, err := r.Cookie(auth.SessionCookieName)
+	if err != nil || cookie.Value == "" {
+		return model.User{}, true
+	}
+	user, err := h.service.UserBySession(r.Context(), auth.SessionTokenHash(cookie.Value))
+	if errors.Is(err, sql.ErrNoRows) {
+		h.clearSessionCookie(w)
+		return model.User{}, true
+	}
+	if err != nil {
+		h.logger.Error("load optional session user", "error", err)
+		writeError(w, http.StatusInternalServerError, "SourceInk couldn't load your account")
+		return model.User{}, false
+	}
+	return user, true
+}
+
 func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     auth.SessionCookieName,

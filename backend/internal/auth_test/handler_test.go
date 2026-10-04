@@ -21,6 +21,7 @@ type fakeAccountStore struct {
 	findUserErr          error
 	createUserErr        error
 	createSessionErr     error
+	connectEmailErr      error
 	sessionUserErr       error
 	deleteSessionErr     error
 	createdSessionUserID string
@@ -32,6 +33,9 @@ type fakeAccountStore struct {
 	registeredPassword   string
 	registeredTokenHash  []byte
 	registeredExpiration time.Time
+	connectedUserID      string
+	connectedEmail       string
+	connectedPassword    string
 }
 
 func (s *fakeAccountStore) CreateUserAndSession(
@@ -61,6 +65,13 @@ func (s *fakeAccountStore) CreateSession(_ context.Context, userID string, token
 func (s *fakeAccountStore) FindOrCreateUserByGitHub(_ context.Context, _ model.GitHubUser, tokenHash []byte, _ time.Time) (model.User, error) {
 	s.createdSessionHash = tokenHash
 	return s.user, s.createUserErr
+}
+
+func (s *fakeAccountStore) SetEmailPasswordForGitHubUser(_ context.Context, userID, email, passwordHash string) (model.User, error) {
+	s.connectedUserID = userID
+	s.connectedEmail = email
+	s.connectedPassword = passwordHash
+	return s.user, s.connectEmailErr
 }
 
 func (s *fakeAccountStore) UserBySession(_ context.Context, tokenHash []byte) (model.User, error) {
@@ -234,5 +245,81 @@ func TestMeAndLogoutHashTheCookieToken(t *testing.T) {
 	}
 	if cookie := responseCookie(t, logoutRecorder.Result()); cookie.MaxAge != -1 {
 		t.Fatalf("logout cookie MaxAge = %d, want -1", cookie.MaxAge)
+	}
+}
+
+func TestConnectEmailAddsCredentialsToAuthenticatedGitHubAccount(t *testing.T) {
+	githubUserID := int64(12345)
+	store := &fakeAccountStore{user: model.User{ID: "github-user", Username: "writer", GitHubUserID: &githubUserID}}
+	handler := newTestHandler(t, store, false)
+	request := jsonRequest(http.MethodPost, "/api/auth/email", `{"email":" Writer@Example.com ","password":"correct horse battery staple"}`)
+	request.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "session-token"})
+	recorder := httptest.NewRecorder()
+
+	handler.ConnectEmail(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("ConnectEmail() status = %d, want %d: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if store.connectedUserID != "github-user" || store.connectedEmail != "writer@example.com" {
+		t.Fatalf("connected credentials = user %q email %q", store.connectedUserID, store.connectedEmail)
+	}
+	valid, err := auth.VerifyPassword("correct horse battery staple", store.connectedPassword)
+	if err != nil || !valid {
+		t.Fatalf("connected password hash did not verify: valid=%v err=%v", valid, err)
+	}
+}
+
+func TestConnectEmailRequiresAuthentication(t *testing.T) {
+	store := &fakeAccountStore{}
+	handler := newTestHandler(t, store, false)
+	recorder := httptest.NewRecorder()
+
+	handler.ConnectEmail(recorder, jsonRequest(http.MethodPost, "/api/auth/email", `{"email":"writer@example.com","password":"correct horse battery staple"}`))
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("ConnectEmail() status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+	if store.connectedUserID != "" {
+		t.Fatal("ConnectEmail() changed credentials without a session")
+	}
+}
+
+func TestConnectEmailRejectsInvalidCredentialsBeforeWriting(t *testing.T) {
+	githubUserID := int64(12345)
+	store := &fakeAccountStore{user: model.User{ID: "github-user", Username: "writer", GitHubUserID: &githubUserID}}
+	handler := newTestHandler(t, store, false)
+	request := jsonRequest(http.MethodPost, "/api/auth/email", `{"email":"not-an-email","password":"short"}`)
+	request.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "session-token"})
+	recorder := httptest.NewRecorder()
+
+	handler.ConnectEmail(recorder, request)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("ConnectEmail() status = %d, want %d", recorder.Code, http.StatusUnprocessableEntity)
+	}
+	if store.connectedUserID != "" {
+		t.Fatal("ConnectEmail() wrote invalid credentials")
+	}
+}
+
+func TestConnectEmailReportsTakenEmail(t *testing.T) {
+	githubUserID := int64(12345)
+	store := &fakeAccountStore{
+		user:            model.User{ID: "github-user", Username: "writer", GitHubUserID: &githubUserID},
+		connectEmailErr: model.ErrEmailTaken,
+	}
+	handler := newTestHandler(t, store, false)
+	request := jsonRequest(http.MethodPost, "/api/auth/email", `{"email":"writer@example.com","password":"correct horse battery staple"}`)
+	request.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: "session-token"})
+	recorder := httptest.NewRecorder()
+
+	handler.ConnectEmail(recorder, request)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("ConnectEmail() status = %d, want %d", recorder.Code, http.StatusConflict)
+	}
+	if !strings.Contains(recorder.Body.String(), model.ErrEmailTaken.Error()) {
+		t.Fatalf("ConnectEmail() response = %q", recorder.Body.String())
 	}
 }

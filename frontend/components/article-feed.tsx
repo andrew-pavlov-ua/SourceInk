@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { PublishedArticle } from "@/lib/backend";
+import type { ReviewedPublishedArticle } from "@/lib/backend";
 
 type SortOrder = "desc" | "asc";
 
@@ -11,11 +11,11 @@ type ArticleMetadata = {
   tags: string[];
 };
 
-function articleTitle(article: PublishedArticle) {
+function articleTitle(article: ReviewedPublishedArticle) {
   return article.title || article.source_path.split("/").at(-1)?.replace(/\.md$/i, "") || "Untitled article";
 }
 
-function articleMetadata(article: PublishedArticle): ArticleMetadata {
+function articleMetadata(article: ReviewedPublishedArticle): ArticleMetadata {
   if (typeof article.frontmatter !== "object" || article.frontmatter === null) {
     return { description: "", tags: [] };
   }
@@ -43,7 +43,7 @@ function readingTime(markdown: string) {
   return `${Math.max(1, Math.ceil(words / 200))} min read`;
 }
 
-function sortArticles(articles: PublishedArticle[], order: SortOrder) {
+function sortArticles(articles: ReviewedPublishedArticle[], order: SortOrder) {
   return [...articles].sort((first, second) => {
     const firstTimestamp = publishedTimestamp(first.published_at);
     const secondTimestamp = publishedTimestamp(second.published_at);
@@ -58,7 +58,7 @@ function sortArticles(articles: PublishedArticle[], order: SortOrder) {
   });
 }
 
-export function ArticleFeed({ username, articles, loadFailed }: { username: string; articles: PublishedArticle[]; loadFailed: boolean }) {
+export function ArticleFeed({ username, articles, loadFailed }: { username: string; articles: ReviewedPublishedArticle[]; loadFailed: boolean }) {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const sortedArticles = useMemo(() => sortArticles(articles, sortOrder), [articles, sortOrder]);
 
@@ -112,10 +112,12 @@ export function ArticleFeed({ username, articles, loadFailed }: { username: stri
                       <p className="feed-description">{metadata.description || "No description was saved with this publication."}</p>
                       <p className="feed-meta">
                         <span>By @{article.author_username || username}</span>
-                        <span aria-hidden="true">·</span>
                         <time dateTime={article.published_at}>{displayDate(article.published_at)}</time>
-                        <span aria-hidden="true">·</span>
                         <span>{readingTime(article.markdown)}</span>
+                        <span className="feed-review-signals" aria-label={`${article.reviews.approveCount} approvals and ${article.reviews.requestChangesCount} change requests`}>
+                          <span className="feed-review-approvals">{article.reviews.approveCount.toLocaleString()} approved</span>
+                          <span className="feed-review-changes">{article.reviews.requestChangesCount.toLocaleString()} changes</span>
+                        </span>
                       </p>
                     </div>
                     <Link className="feed-read-link" href={articleHref} aria-label={`Read ${title}`}>Read article</Link>

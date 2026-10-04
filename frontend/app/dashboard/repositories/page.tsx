@@ -57,7 +57,7 @@ export default async function RepositoriesPage({ searchParams }: RepositoriesPag
           <div className="data-list-head" aria-hidden="true"><span>Repository</span><span>Default branch</span><span>Visibility</span><span>State</span></div>
           {repositories.map((repository) => (
             <article className="data-row" key={repository.github_id}>
-              <div><strong>{repository.full_name}</strong><p>{repository.owner} · GitHub ID {repository.github_id}</p></div>
+              <div><strong>{repository.full_name}</strong><p>Owned by {repository.owner}</p></div>
               <code>{repository.default_branch || "No default branch"}</code>
               <span>{repository.private ? "Private" : "Public"}</span>
               <span>{repository.archived ? "Archived" : "Active"}</span>

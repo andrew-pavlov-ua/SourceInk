@@ -77,7 +77,7 @@ export function ArticleDiff({
           <strong>{sourcePath}</strong>
           <span>
             <code>{publishedBlobSHA.slice(0, 8)}</code>
-            <span aria-hidden="true"> → </span>
+            <span> to </span>
             <code>{draftBlobSHA.slice(0, 8)}</code>
           </span>
         </div>

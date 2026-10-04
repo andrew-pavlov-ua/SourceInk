@@ -77,6 +77,7 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 	router.Route("/api/auth", func(r chi.Router) {
 		r.Post("/register", authHandler.Register)
 		r.Post("/login", authHandler.Login)
+		r.Post("/email", authHandler.ConnectEmail)
 		r.Get("/me", authHandler.Me)
 		r.Post("/logout", authHandler.Logout)
 		r.Get("/github", githubHandler.LoginRedirect)
@@ -87,11 +88,18 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 		r.Get("/setup", githubHandler.SetupInstallation)
 		r.Get("/callback", githubHandler.ValidateOAuthCallback)
 	})
-	router.Route("/api/", func(r chi.Router) {
+	router.Route("/api", func(r chi.Router) {
 		r.Get("/repos", apiHandler.ListRepositories)
 		r.Get("/articles", apiHandler.ListArticles)
 		r.Get("/published-articles", apiHandler.ListPublishedArticles)
-		r.Post("/articles/{draftID}/publish", apiHandler.PublishArticle)
+		r.Route("/articles", func(r chi.Router) {
+			r.Post("/{draftID}/publish", apiHandler.PublishArticle)
+		})
+		r.Route("/published-articles/{articleID}", func(r chi.Router) {
+			r.Get("/reviews", apiHandler.GetReviewSummary)
+			r.Put("/review", apiHandler.CreateReview)
+			r.Delete("/review", apiHandler.DeleteReview)
+		})
 	})
 
 	handler := securityHeaders(router)
