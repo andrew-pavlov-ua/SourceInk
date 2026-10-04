@@ -801,30 +801,100 @@ select:focus-visible,
     letter-spacing: -0.03em;
 }
 .docs-content > header > p:last-child {
+    max-width: 65ch;
     margin: 17px 0 0;
     color: var(--muted);
+    line-height: 1.7;
 }
 .docs-content > section {
-    display: grid;
-    grid-template-columns: 48px 1fr;
     padding: 32px 0;
     border-bottom: 1px solid var(--border);
     scroll-margin-top: 20px;
-}
-.docs-content > section > span {
-    color: var(--accent);
-    font-size: 20px;
-    font-weight: 600;
-    line-height: 1.2;
 }
 .docs-content h2 {
     margin: 0 0 10px;
     font-size: 20px;
 }
 .docs-content section p {
+    max-width: 65ch;
     margin: 0;
     color: var(--muted);
     line-height: 1.7;
+}
+.docs-content section p + p {
+    margin-top: 12px;
+}
+.docs-content strong,
+.docs-content code {
+    color: var(--text);
+}
+.docs-content code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+.docs-code {
+    margin: 20px 0;
+    overflow: auto;
+    padding: 18px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    scrollbar-color: var(--border-strong) var(--surface);
+}
+.docs-code code {
+    white-space: pre;
+}
+.docs-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px 32px;
+    margin: 0;
+}
+.docs-fields div,
+.docs-publish-modes div {
+    display: grid;
+    gap: 5px;
+}
+.docs-fields dt,
+.docs-fields dd,
+.docs-publish-modes dt,
+.docs-publish-modes dd {
+    margin: 0;
+}
+.docs-fields dt,
+.docs-publish-modes dt {
+    font-size: 14px;
+    font-weight: 650;
+}
+.docs-fields dd,
+.docs-publish-modes dd {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.55;
+}
+.docs-publish-modes {
+    display: grid;
+    gap: 18px;
+    margin: 0;
+}
+.docs-publish-modes div {
+    grid-template-columns: minmax(88px, 0.2fr) minmax(0, 1fr);
+    gap: 24px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border);
+}
+.docs-publish-modes div:last-child {
+    border-bottom: 1px solid var(--border);
+}
+.docs-note {
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
 .docs-next {
     margin: 32px 0 0;
@@ -2687,6 +2757,13 @@ select:focus-visible,
         flex: 0 0 auto;
         border-left: 0;
         border-bottom: 2px solid transparent;
+    }
+    .docs-fields {
+        grid-template-columns: 1fr;
+    }
+    .docs-publish-modes div {
+        grid-template-columns: 1fr;
+        gap: 7px;
     }
     .pricing-table header {
         display: none;
