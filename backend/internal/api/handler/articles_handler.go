@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -11,8 +10,6 @@ import (
 )
 
 func (h *Handler) ListArticles(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("LISTARTICLES TRIGGERED")
-
 	user, ok := h.currentUser(w, r)
 	if !ok {
 		return
@@ -24,7 +21,6 @@ func (h *Handler) ListArticles(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "SourceInk couldn't load your articles")
 		return
 	}
-
 	writeJSON(w, http.StatusOK, articles)
 }
 
