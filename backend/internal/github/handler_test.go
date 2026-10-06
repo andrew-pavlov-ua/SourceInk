@@ -143,9 +143,12 @@ func TestGitHubLoginCreatesSessionWithoutExistingSourceInkSession(t *testing.T) 
 		t.Fatalf("start status = %d", start.Code)
 	}
 	state := mustRedirectURL(t, start).Query().Get("state")
+	binding := mustLoginBindingCookie(t, start)
 
 	callback := httptest.NewRecorder()
-	handler.ValidateOAuthCallback(callback, httptest.NewRequest(http.MethodGet, "/api/github/callback?code=code-value&state="+url.QueryEscape(state), nil))
+	callbackRequest := httptest.NewRequest(http.MethodGet, "/api/github/callback?code=code-value&state="+url.QueryEscape(state), nil)
+	callbackRequest.AddCookie(binding)
+	handler.ValidateOAuthCallback(callback, callbackRequest)
 	if callback.Code != http.StatusFound {
 		t.Fatalf("callback status = %d, body = %s", callback.Code, callback.Body.String())
 	}
@@ -157,6 +160,45 @@ func TestGitHubLoginCreatesSessionWithoutExistingSourceInkSession(t *testing.T) 
 	}
 	if len(callback.Result().Cookies()) == 0 || callback.Result().Cookies()[0].Name != auth.SessionCookieName {
 		t.Fatal("GitHub login did not set the session cookie")
+	}
+}
+
+func TestGitHubLoginCallbackRequiresTheInitiatingBrowserBinding(t *testing.T) {
+	store := &serviceTestStore{user: model.User{ID: "user-id", Username: "octocat"}}
+	client := &serviceTestClient{userToken: "user-token"}
+	handler := newTestHandler(store, client)
+
+	start := httptest.NewRecorder()
+	handler.LoginRedirect(start, httptest.NewRequest(http.MethodGet, "/api/auth/github", nil))
+	state := mustRedirectURL(t, start).Query().Get("state")
+
+	callback := httptest.NewRecorder()
+	handler.ValidateOAuthCallback(callback, httptest.NewRequest(http.MethodGet, "/api/github/callback?code=code-value&state="+url.QueryEscape(state), nil))
+	if callback.Code != http.StatusBadRequest || client.exchangeCode != "" {
+		t.Fatalf("status = %d, exchanged = %q", callback.Code, client.exchangeCode)
+	}
+}
+
+func TestGitHubOAuthStartsUseSharedAdmissionLimit(t *testing.T) {
+	handler := newTestHandler(&serviceTestStore{}, &serviceTestClient{})
+	handler.oauthStartLimiter = auth.NewLimiter(1, time.Hour)
+
+	first := httptest.NewRecorder()
+	handler.LoginRedirect(first, httptest.NewRequest(http.MethodGet, "/api/auth/github", nil))
+	if first.Code != http.StatusFound {
+		t.Fatalf("first login start status = %d", first.Code)
+	}
+	if len(handler.oauthAttempts.attempts) != 1 {
+		t.Fatalf("OAuth attempts after first start = %d, want 1", len(handler.oauthAttempts.attempts))
+	}
+
+	second := httptest.NewRecorder()
+	handler.LoginRedirect(second, httptest.NewRequest(http.MethodGet, "/api/auth/github", nil))
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second login start status = %d, want %d", second.Code, http.StatusTooManyRequests)
+	}
+	if len(handler.oauthAttempts.attempts) != 1 {
+		t.Fatalf("OAuth attempts after rejected start = %d, want 1", len(handler.oauthAttempts.attempts))
 	}
 }
 
@@ -209,9 +251,12 @@ func TestGitHubLoginRefreshesExistingInstallation(t *testing.T) {
 	start := httptest.NewRecorder()
 	handler.LoginRedirect(start, httptest.NewRequest(http.MethodGet, "/api/auth/github", nil))
 	state := mustRedirectURL(t, start).Query().Get("state")
+	binding := mustLoginBindingCookie(t, start)
 
 	callback := httptest.NewRecorder()
-	handler.ValidateOAuthCallback(callback, httptest.NewRequest(http.MethodGet, "/api/github/callback?code=code-value&state="+url.QueryEscape(state), nil))
+	callbackRequest := httptest.NewRequest(http.MethodGet, "/api/github/callback?code=code-value&state="+url.QueryEscape(state), nil)
+	callbackRequest.AddCookie(binding)
+	handler.ValidateOAuthCallback(callback, callbackRequest)
 
 	if callback.Code != http.StatusFound {
 		t.Fatalf("callback status = %d, body = %s", callback.Code, callback.Body.String())
@@ -231,6 +276,20 @@ func mustRedirectURL(t *testing.T, response *httptest.ResponseRecorder) *url.URL
 		t.Fatal(err)
 	}
 	return location
+}
+
+func mustLoginBindingCookie(t *testing.T, response *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == loginBindingCookieName {
+			if !cookie.HttpOnly || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/api/github/callback" || cookie.MaxAge <= 0 {
+				t.Fatalf("OAuth binding cookie = %#v", cookie)
+			}
+			return cookie
+		}
+	}
+	t.Fatalf("OAuth login did not set %s", loginBindingCookieName)
+	return nil
 }
 
 func newTestHandler(store installationStore, client githubClient) Handler {

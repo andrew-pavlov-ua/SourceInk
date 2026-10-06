@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"sourceink/backend/internal/model"
 )
 
 type ArticlesWorker struct {
-	service *Service
+	service         *Service
+	gatesMu         sync.Mutex
+	repositoryGates map[string]chan struct{}
 }
 
 // Webhooks normally make pushes visible immediately. This reconciliation is a
@@ -18,7 +21,7 @@ type ArticlesWorker struct {
 const articlesSyncInterval = 15 * time.Minute
 
 func NewArticlesWorker(service *Service) *ArticlesWorker {
-	return &ArticlesWorker{service: service}
+	return &ArticlesWorker{service: service, repositoryGates: make(map[string]chan struct{})}
 }
 
 func (w *ArticlesWorker) Start(ctx context.Context) error {
@@ -72,7 +75,7 @@ func (w *ArticlesWorker) SyncOnce(ctx context.Context) ([]model.UnpublishedArtic
 
 	unpublishedArticles := make([]model.UnpublishedArticle, 0)
 	for _, repository := range repositories {
-		repositoryArticles, err := w.service.syncRepository(ctx, repository)
+		repositoryArticles, err := w.syncRepository(ctx, repository)
 		if err != nil {
 			return nil, fmt.Errorf("sync repository %s: %w", repository.FullName, err)
 		}
@@ -97,7 +100,7 @@ func (w *ArticlesWorker) SyncRepository(ctx context.Context, installationID, git
 	if err != nil {
 		return fmt.Errorf("find repository for webhook sync: %w", err)
 	}
-	unpublishedArticles, err := w.service.syncRepository(ctx, repository)
+	unpublishedArticles, err := w.syncRepository(ctx, repository)
 	if err != nil {
 		return fmt.Errorf("sync repository %s: %w", repository.FullName, err)
 	}
@@ -108,4 +111,35 @@ func (w *ArticlesWorker) SyncRepository(ctx context.Context, installationID, git
 		return err
 	}
 	return nil
+}
+
+func (w *ArticlesWorker) syncRepository(ctx context.Context, repository model.Repository) ([]model.UnpublishedArticle, error) {
+	release, err := w.lockRepository(ctx, repository.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	return w.service.syncRepository(ctx, repository)
+}
+
+func (w *ArticlesWorker) lockRepository(ctx context.Context, repositoryID string) (func(), error) {
+	if repositoryID == "" {
+		return nil, errors.New("repository ID is required")
+	}
+
+	w.gatesMu.Lock()
+	gate := w.repositoryGates[repositoryID]
+	if gate == nil {
+		gate = make(chan struct{}, 1)
+		w.repositoryGates[repositoryID] = gate
+	}
+	w.gatesMu.Unlock()
+
+	select {
+	case gate <- struct{}{}:
+		return func() { <-gate }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }

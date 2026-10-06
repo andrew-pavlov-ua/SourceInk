@@ -26,6 +26,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too many login attempts; try again later")
 		return
 	}
+	releasePasswordWork, ok := h.beginPasswordWork()
+	if !ok {
+		writeError(w, http.StatusTooManyRequests, "too many login attempts; try again later")
+		return
+	}
+	defer releasePasswordWork()
 
 	user, storedHash, err := h.store.FindUserByEmail(r.Context(), email)
 	userExists := true

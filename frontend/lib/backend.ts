@@ -71,6 +71,8 @@ export type ReviewedPublishedArticle = PublishedArticle & {
   reviews: ReviewSummary;
 };
 
+export type PublishedArticleOrder = "newest" | "oldest" | "rating-desc" | "rating-asc";
+
 export type UserArticles = {
   user_id: string;
   unpublished_articles: UnpublishedArticle[];
@@ -120,9 +122,9 @@ export async function getArticles(cookieHeader: string): Promise<UserArticles> {
   };
 }
 
-export async function getPublishedArticles(cookieHeader = ""): Promise<ReviewedPublishedArticle[]> {
+export async function getPublishedArticles(cookieHeader = "", order: PublishedArticleOrder = "newest"): Promise<ReviewedPublishedArticle[]> {
   const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
-  const response = await fetch(`${baseURL}/api/published-articles`, {
+  const response = await fetch(`${baseURL}/api/published-articles?sort=${encodeURIComponent(order)}`, {
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
   });

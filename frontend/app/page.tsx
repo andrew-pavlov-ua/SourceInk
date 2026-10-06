@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { ArticleFeed } from "@/components/article-feed";
 import { CommitHistory } from "@/components/commit-history";
 import { SiteHeader } from "@/components/site-header";
-import { getCurrentUser, getPublishedArticles, SESSION_COOKIE_NAME, type ReviewedPublishedArticle, type User } from "@/lib/backend";
+import { getCurrentUser, getPublishedArticles, SESSION_COOKIE_NAME, type PublishedArticleOrder, type ReviewedPublishedArticle, type User } from "@/lib/backend";
 
 const workflow = [
   { title: "Install the GitHub App", body: "Choose the repositories SourceInk may read. It finds every Markdown file with frontmatter." },
@@ -19,7 +19,18 @@ type HomepageData = {
   articlesLoadFailed: boolean;
 };
 
-async function getHomepageData(): Promise<HomepageData> {
+function publishedArticleOrder(value: string | undefined): PublishedArticleOrder {
+  switch (value) {
+    case "oldest":
+    case "rating-desc":
+    case "rating-asc":
+      return value;
+    default:
+      return "newest";
+  }
+}
+
+async function getHomepageData(order: PublishedArticleOrder): Promise<HomepageData> {
   const cookieStore = await cookies();
   if (!cookieStore.has(SESSION_COOKIE_NAME)) {
     return { user: null, publishedArticles: [], articlesLoadFailed: false };
@@ -35,21 +46,22 @@ async function getHomepageData(): Promise<HomepageData> {
   if (!user) return { user: null, publishedArticles: [], articlesLoadFailed: false };
 
   try {
-    const publishedArticles = await getPublishedArticles(cookieHeader);
+    const publishedArticles = await getPublishedArticles(cookieHeader, order);
     return { user, publishedArticles, articlesLoadFailed: false };
   } catch {
     return { user, publishedArticles: [], articlesLoadFailed: true };
   }
 }
 
-export default async function HomePage() {
-  const { user, publishedArticles, articlesLoadFailed } = await getHomepageData();
+export default async function HomePage({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
+  const order = publishedArticleOrder((await searchParams).sort);
+  const { user, publishedArticles, articlesLoadFailed } = await getHomepageData(order);
 
   if (user) {
     return (
       <>
         <SiteHeader />
-        <ArticleFeed username={user.username} articles={publishedArticles} loadFailed={articlesLoadFailed} />
+        <ArticleFeed username={user.username} articles={publishedArticles} loadFailed={articlesLoadFailed} order={order} />
       </>
     );
   }

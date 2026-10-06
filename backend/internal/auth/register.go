@@ -29,6 +29,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, "too many registration attempts; try again later")
 		return
 	}
+	releasePasswordWork, ok := h.beginPasswordWork()
+	if !ok {
+		writeError(w, http.StatusTooManyRequests, "too many registration attempts; try again later")
+		return
+	}
+	defer releasePasswordWork()
 
 	passwordHash, err := HashPassword(input.Password)
 	if err != nil {

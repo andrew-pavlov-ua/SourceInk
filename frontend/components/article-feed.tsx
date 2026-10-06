@@ -1,11 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { articleMetadata, articleReadingTime, articleTitle } from "@/lib/article-display";
-import type { ReviewedPublishedArticle } from "@/lib/backend";
+import type { PublishedArticleOrder, ReviewedPublishedArticle } from "@/lib/backend";
 
-type SortOrder = "desc" | "asc";
+type SortOrder = PublishedArticleOrder;
+
+const sortOptions: { value: SortOrder; label: string; description: string }[] = [
+  { value: "newest", label: "Newest first", description: "Recently published" },
+  { value: "oldest", label: "Oldest first", description: "Earliest published" },
+  { value: "rating-desc", label: "Highest rated", description: "Most approved" },
+  { value: "rating-asc", label: "Lowest rated", description: "Needs attention" },
+];
 
 function publishedTimestamp(value: string) {
   const timestamp = Date.parse(value);
@@ -18,24 +26,50 @@ function displayDate(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(timestamp);
 }
 
-function sortArticles(articles: ReviewedPublishedArticle[], order: SortOrder) {
-  return [...articles].sort((first, second) => {
-    const firstTimestamp = publishedTimestamp(first.published_at);
-    const secondTimestamp = publishedTimestamp(second.published_at);
-    if (firstTimestamp === null && secondTimestamp === null) return articleTitle(first).localeCompare(articleTitle(second));
-    if (firstTimestamp === null) return 1;
-    if (secondTimestamp === null) return -1;
+export function ArticleFeed({ username, articles, loadFailed, order }: { username: string; articles: ReviewedPublishedArticle[]; loadFailed: boolean; order: SortOrder }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const sortMenuID = useId();
+  const sortControlRef = useRef<HTMLDivElement>(null);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
+  const sortOptionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const selectedSort = sortOptions.find((option) => option.value === order) ?? sortOptions[0];
 
-    const dateDifference = order === "desc"
-      ? secondTimestamp - firstTimestamp
-      : firstTimestamp - secondTimestamp;
-    return dateDifference || articleTitle(first).localeCompare(articleTitle(second));
-  });
-}
+  useEffect(() => {
+    if (!sortMenuOpen) return;
 
-export function ArticleFeed({ username, articles, loadFailed }: { username: string; articles: ReviewedPublishedArticle[]; loadFailed: boolean }) {
-  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
-  const sortedArticles = useMemo(() => sortArticles(articles, sortOrder), [articles, sortOrder]);
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!sortControlRef.current?.contains(event.target as Node)) setSortMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [sortMenuOpen]);
+
+  useEffect(() => {
+    if (!sortMenuOpen) return;
+    const selectedIndex = sortOptions.findIndex((option) => option.value === order);
+    sortOptionRefs.current[selectedIndex]?.focus();
+  }, [sortMenuOpen, order]);
+
+  function changeSortOrder(nextOrder: SortOrder) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextOrder === "newest") params.delete("sort");
+    else params.set("sort", nextOrder);
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }
+
+  function chooseSortOrder(nextOrder: SortOrder) {
+    setSortMenuOpen(false);
+    changeSortOrder(nextOrder);
+  }
+
+  function moveSortFocus(currentIndex: number, direction: number) {
+    const nextIndex = (currentIndex + direction + sortOptions.length) % sortOptions.length;
+    sortOptionRefs.current[nextIndex]?.focus();
+  }
 
   return (
     <main id="main-content" className="article-feed">
@@ -53,13 +87,72 @@ export function ArticleFeed({ username, articles, loadFailed }: { username: stri
             <h2 id="published-articles-heading">Published articles</h2>
             <div className="feed-section-controls">
               <span className="feed-count">{articles.length} {articles.length === 1 ? "article" : "articles"}</span>
-              <label className="feed-sort">
+              <div className="feed-sort">
                 <span>Sort by</span>
-                <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as SortOrder)} disabled={articles.length < 2}>
-                  <option value="desc">Newest first</option>
-                  <option value="asc">Oldest first</option>
-                </select>
-              </label>
+                <div className="feed-sort-control" ref={sortControlRef}>
+                  <button
+                    ref={sortButtonRef}
+                    className="feed-sort-trigger"
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={sortMenuOpen}
+                    aria-controls={sortMenuID}
+                    onClick={() => setSortMenuOpen((open) => !open)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setSortMenuOpen(true);
+                      }
+                    }}
+                  >
+                    <span>{selectedSort.label}</span>
+                    <svg className="feed-sort-chevron" aria-hidden="true" viewBox="0 0 12 12" fill="none">
+                      <path d="m3 4.5 3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  {sortMenuOpen ? (
+                    <div className="feed-sort-menu" id={sortMenuID} role="menu" aria-label="Sort published articles">
+                      {sortOptions.map((option, index) => {
+                        const selected = option.value === order;
+                        return (
+                          <button
+                            ref={(element) => { sortOptionRefs.current[index] = element; }}
+                            className={selected ? "feed-sort-option feed-sort-option-selected" : "feed-sort-option"}
+                            key={option.value}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={selected}
+                            onClick={() => chooseSortOrder(option.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "ArrowDown") {
+                                event.preventDefault();
+                                moveSortFocus(index, 1);
+                              } else if (event.key === "ArrowUp") {
+                                event.preventDefault();
+                                moveSortFocus(index, -1);
+                              } else if (event.key === "Home") {
+                                event.preventDefault();
+                                sortOptionRefs.current[0]?.focus();
+                              } else if (event.key === "End") {
+                                event.preventDefault();
+                                sortOptionRefs.current[sortOptions.length - 1]?.focus();
+                              } else if (event.key === "Escape") {
+                                event.preventDefault();
+                                setSortMenuOpen(false);
+                                sortButtonRef.current?.focus();
+                              }
+                            }}
+                          >
+                            <span>{option.label}</span>
+                            <small>{option.description}</small>
+                            {selected ? <svg aria-hidden="true" viewBox="0 0 16 16" fill="none"><path d="m3.5 8 2.8 2.8 6.2-6.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </header>
           {loadFailed ? (
@@ -67,7 +160,7 @@ export function ArticleFeed({ username, articles, loadFailed }: { username: stri
               <h3>SourceInk couldn&apos;t load published articles</h3>
               <p>Refresh the page to try again.</p>
             </div>
-          ) : sortedArticles.length === 0 ? (
+          ) : articles.length === 0 ? (
             <div className="feed-empty">
               <h3>No published articles yet</h3>
               <p>Publish a repository draft and it will appear here.</p>
@@ -75,7 +168,7 @@ export function ArticleFeed({ username, articles, loadFailed }: { username: stri
             </div>
           ) : (
             <div className="feed-list">
-              {sortedArticles.map((article) => {
+              {articles.map((article) => {
                 const metadata = articleMetadata(article.frontmatter);
                 const title = articleTitle(article);
                 const articleHref = `/articles/${encodeURIComponent(article.slug)}`;

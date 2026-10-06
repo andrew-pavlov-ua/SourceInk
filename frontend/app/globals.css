@@ -554,21 +554,129 @@ select:focus-visible,
 .feed-sort {
     gap: 8px;
 }
-.feed-sort select {
-    min-height: 34px;
-    padding: 0 28px 0 9px;
-    color: var(--text);
-    background: var(--surface);
-    border: 1px solid var(--border-strong);
-    border-radius: 4px;
-    font-size: 12px;
-    cursor: pointer;
+.feed-sort-control {
+    position: relative;
+    display: inline-flex;
+    min-width: 142px;
 }
-.feed-sort select:disabled {
+.feed-sort-trigger {
+    width: 100%;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 0 11px 0 12px;
+    color: var(--text);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 11%, var(--surface)) 0%, var(--surface) 48%);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 7%, transparent), 0 5px 14px color-mix(in srgb, var(--shadow) 42%, transparent);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.feed-sort-trigger:hover,
+.feed-sort-trigger[aria-expanded="true"] {
+    color: var(--accent-strong);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 19%, var(--surface-raised)) 0%, var(--surface-raised) 54%);
+    border-color: color-mix(in srgb, var(--accent) 68%, var(--border-strong));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text) 9%, transparent), 0 8px 18px color-mix(in srgb, var(--glow) 45%, transparent);
+    transform: translateY(-1px);
+}
+.feed-sort-trigger:focus-visible,
+.feed-sort-option:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.feed-sort-chevron {
+    width: 12px;
+    height: 12px;
+    color: var(--accent-strong);
+    pointer-events: none;
+    transition: color 160ms ease, transform 160ms ease;
+}
+.feed-sort-trigger[aria-expanded="true"] .feed-sort-chevron {
+    color: var(--text);
+    transform: rotate(180deg);
+}
+.feed-sort-menu {
+    position: absolute;
+    z-index: 8;
+    top: calc(100% + 9px);
+    right: 0;
+    width: 202px;
+    padding: 6px;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 13%, var(--surface-raised)), var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border-strong));
+    border-radius: 9px;
+    box-shadow: 0 18px 42px color-mix(in srgb, var(--shadow) 82%, transparent), inset 0 1px 0 color-mix(in srgb, var(--text) 9%, transparent);
+    animation: feed-sort-menu-in 150ms ease-out both;
+}
+.feed-sort-option {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
+    padding: 9px 10px;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 130ms ease, color 130ms ease;
+}
+.feed-sort-option > span {
+    font-weight: 650;
+}
+.feed-sort-option small {
+    grid-column: 1;
     color: var(--faint);
-    background: var(--surface-subtle);
-    border-color: var(--border);
-    cursor: default;
+    font-size: 11px;
+}
+.feed-sort-option svg {
+    width: 16px;
+    height: 16px;
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    color: var(--accent-strong);
+}
+.feed-sort-option:hover,
+.feed-sort-option:focus-visible {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 13%, var(--surface-strong));
+}
+.feed-sort-option-selected {
+    color: var(--accent-strong);
+    background: color-mix(in srgb, var(--accent) 17%, var(--surface-strong));
+}
+.feed-sort-option-selected small {
+    color: color-mix(in srgb, var(--accent-strong) 72%, var(--muted));
+}
+@keyframes feed-sort-menu-in {
+    from {
+        opacity: 0;
+        transform: translateY(-5px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .feed-sort-trigger,
+    .feed-sort-menu,
+    .feed-sort-option,
+    .feed-sort-chevron {
+        animation: none;
+        transition: none;
+    }
 }
 .feed-list {
     border-bottom: 1px solid var(--border);

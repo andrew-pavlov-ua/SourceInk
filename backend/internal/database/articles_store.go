@@ -283,15 +283,15 @@ func (s *Store) ListUserArticles(ctx context.Context, userID string) ([]model.Ar
 	return s.listArticles(ctx, "where a.owner_id = $1\norder by a.published_at desc, a.id", userID)
 }
 
-func (s *Store) ListPublishedArticles(ctx context.Context, viewerID string) ([]model.PublishedArticle, error) {
-	return s.selectPublishedArticles(ctx, viewerID, "", nil)
+func (s *Store) ListPublishedArticles(ctx context.Context, viewerID string, order model.PublishedArticleOrder) ([]model.PublishedArticle, error) {
+	return s.selectPublishedArticles(ctx, viewerID, "", nil, publishedArticleOrderBy(order))
 }
 
 func (s *Store) PublishedArticleBySlug(ctx context.Context, slug, viewerID string) (model.PublishedArticle, error) {
 	if slug == "" {
 		return model.PublishedArticle{}, model.ErrPublishedArticleNotFound
 	}
-	articles, err := s.selectPublishedArticles(ctx, viewerID, "where a.slug = $2", slug)
+	articles, err := s.selectPublishedArticles(ctx, viewerID, "where a.slug = $2", slug, "a.published_at desc, a.id")
 	if err != nil {
 		return model.PublishedArticle{}, err
 	}
@@ -301,7 +301,20 @@ func (s *Store) PublishedArticleBySlug(ctx context.Context, slug, viewerID strin
 	return articles[0], nil
 }
 
-func (s *Store) selectPublishedArticles(ctx context.Context, viewerID, filter string, filterArg any) ([]model.PublishedArticle, error) {
+func publishedArticleOrderBy(order model.PublishedArticleOrder) string {
+	switch order {
+	case model.PublishedArticleOrderOldest:
+		return "a.published_at asc, a.id"
+	case model.PublishedArticleOrderRatingDesc:
+		return "count(ar.id) filter (where ar.verdict = 'approve') - count(ar.id) filter (where ar.verdict = 'request_changes') desc, a.published_at desc, a.id"
+	case model.PublishedArticleOrderRatingAsc:
+		return "count(ar.id) filter (where ar.verdict = 'approve') - count(ar.id) filter (where ar.verdict = 'request_changes') asc, a.published_at desc, a.id"
+	default:
+		return "a.published_at desc, a.id"
+	}
+}
+
+func (s *Store) selectPublishedArticles(ctx context.Context, viewerID, filter string, filterArg any, orderBy string) ([]model.PublishedArticle, error) {
 	var viewer any
 	if viewerID != "" {
 		viewer = viewerID
@@ -323,7 +336,7 @@ func (s *Store) selectPublishedArticles(ctx context.Context, viewerID, filter st
 			and ar.git_blob_sha = a.git_blob_sha
 		` + filter + `
 		group by a.id, u.username
-		order by a.published_at desc, a.id
+		order by ` + orderBy + `
 	`
 	args := []any{viewer}
 	if filter != "" {

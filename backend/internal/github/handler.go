@@ -1,6 +1,7 @@
 package github
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -16,16 +17,19 @@ import (
 	"sourceink/backend/internal/model"
 )
 
+const maxOAuthStartsPerMinute = 120
+
 type Handler struct {
-	service         *Service
-	cookieSecure    bool
-	logger          *slog.Logger
-	installationURL string
-	repositoriesURL string
-	settingsURL     string
-	successURL      string
-	loginSuccessURL string
-	oauthAttempts   *oauthAttemptCache
+	service           *Service
+	cookieSecure      bool
+	logger            *slog.Logger
+	installationURL   string
+	repositoriesURL   string
+	settingsURL       string
+	successURL        string
+	loginSuccessURL   string
+	oauthAttempts     *oauthAttemptCache
+	oauthStartLimiter *auth.Limiter
 
 	githubClientID   string
 	oauthCallbackURL string
@@ -35,18 +39,19 @@ type Handler struct {
 func NewHandler(service *Service, appSlug, appOrigin, githubClientID, oauthCallbackURL string, cookieSecure bool, sessionTTL time.Duration, logger *slog.Logger) Handler {
 	repositoriesURL := strings.TrimRight(appOrigin, "/") + "/dashboard/repositories"
 	return Handler{
-		service:          service,
-		logger:           logger,
-		cookieSecure:     cookieSecure,
-		installationURL:  "https://github.com/apps/" + url.PathEscape(appSlug) + "/installations/new",
-		repositoriesURL:  repositoriesURL,
-		settingsURL:      strings.TrimRight(appOrigin, "/") + "/dashboard/settings",
-		successURL:       repositoriesURL + "?github=connected",
-		loginSuccessURL:  strings.TrimRight(appOrigin, "/") + "/dashboard",
-		oauthAttempts:    newOAuthAttemptCache(),
-		githubClientID:   githubClientID,
-		oauthCallbackURL: oauthCallbackURL,
-		sessionTTL:       sessionTTL,
+		service:           service,
+		logger:            logger,
+		cookieSecure:      cookieSecure,
+		installationURL:   "https://github.com/apps/" + url.PathEscape(appSlug) + "/installations/new",
+		repositoriesURL:   repositoriesURL,
+		settingsURL:       strings.TrimRight(appOrigin, "/") + "/dashboard/settings",
+		successURL:        repositoriesURL + "?github=connected",
+		loginSuccessURL:   strings.TrimRight(appOrigin, "/") + "/dashboard",
+		oauthAttempts:     newOAuthAttemptCache(),
+		oauthStartLimiter: auth.NewLimiter(maxOAuthStartsPerMinute, time.Minute),
+		githubClientID:    githubClientID,
+		oauthCallbackURL:  oauthCallbackURL,
+		sessionTTL:        sessionTTL,
 	}
 }
 
@@ -144,6 +149,11 @@ func (h *Handler) currentUser(w http.ResponseWriter, r *http.Request) (model.Use
 }
 
 func (h *Handler) redirectToAuth(w http.ResponseWriter, r *http.Request, userID string, pendingInstallationID int64, purpose oauthPurpose) {
+	if !h.oauthStartLimiter.Allow("oauth-start") {
+		writeError(w, http.StatusTooManyRequests, "too many GitHub authorization attempts; try again later")
+		return
+	}
+
 	now := time.Now()
 	if strings.TrimSpace(h.githubClientID) == "" || strings.TrimSpace(h.oauthCallbackURL) == "" {
 		h.logger.Error("GitHub OAuth callback is not configured")
@@ -160,6 +170,14 @@ func (h *Handler) redirectToAuth(w http.ResponseWriter, r *http.Request, userID 
 		writeError(w, http.StatusInternalServerError, "could not start GitHub connection")
 		return
 	}
+	var loginBinding string
+	if purpose == oauthPurposeLogin {
+		loginBinding, err = newOAuthState()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not start GitHub connection")
+			return
+		}
+	}
 	attempt := oauthAttempt{
 		userID:                userID,
 		expiresAt:             now.Add(oauthAttemptTTL),
@@ -167,10 +185,17 @@ func (h *Handler) redirectToAuth(w http.ResponseWriter, r *http.Request, userID 
 		pkceVerifier:          verifier,
 		purpose:               purpose,
 	}
+	if purpose == oauthPurposeLogin {
+		attempt.loginBindingHash = sha256.Sum256([]byte(loginBinding))
+	}
 	if err := h.oauthAttempts.Put(state, attempt, now); err != nil {
 		h.logger.Error("store GitHub OAuth attempt", "error", err)
 		writeError(w, http.StatusServiceUnavailable, "could not start GitHub connection")
 		return
+	}
+	if purpose == oauthPurposeLogin {
+		expiresAt := now.Add(oauthAttemptTTL)
+		http.SetCookie(w, &http.Cookie{Name: loginBindingCookieName, Value: loginBinding, Path: "/api/github/callback", Expires: expiresAt, MaxAge: int(oauthAttemptTTL.Seconds()), HttpOnly: true, Secure: h.cookieSecure, SameSite: http.SameSiteLaxMode})
 	}
 
 	authorizeURL, _ := url.Parse("https://github.com/login/oauth/authorize")
@@ -269,7 +294,12 @@ func (h *Handler) ValidateLoginCallback(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "missing GitHub authorization response")
 		return
 	}
-	attempt, err := h.oauthAttempts.ConsumeLogin(state, time.Now())
+	binding, err := r.Cookie(loginBindingCookieName)
+	if err != nil || binding.Value == "" {
+		writeError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
+		return
+	}
+	attempt, err := h.oauthAttempts.ConsumeLogin(state, binding.Value, time.Now())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
 		return

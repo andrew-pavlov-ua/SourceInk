@@ -93,7 +93,7 @@ func TestReviewStoreReplaceAndDelete(t *testing.T) {
 		t.Fatalf("replacement review = %#v", reviews[0])
 	}
 
-	published, err := store.ListPublishedArticles(ctx, reviewerID)
+	published, err := store.ListPublishedArticles(ctx, reviewerID, model.PublishedArticleOrderNewest)
 	if err != nil {
 		t.Fatalf("ListPublishedArticles(): %v", err)
 	}

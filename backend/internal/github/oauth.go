@@ -10,8 +10,9 @@ import (
 )
 
 const (
-	oauthAttemptTTL  = 10 * time.Minute
-	maxOAuthAttempts = 10_000
+	oauthAttemptTTL        = 10 * time.Minute
+	maxOAuthAttempts       = 10_000
+	loginBindingCookieName = "sourceink_github_login"
 )
 
 var errOAuthAttemptInvalid = errors.New("github OAuth attempt is invalid or expired")
@@ -22,6 +23,7 @@ type oauthAttempt struct {
 	pendingInstallationID int64
 	pkceVerifier          string
 	purpose               oauthPurpose
+	loginBindingHash      [sha256.Size]byte
 }
 
 type oauthPurpose uint8
@@ -73,11 +75,18 @@ func (c *oauthAttemptCache) Consume(userID, rawState string, now time.Time) (oau
 	return attempt, nil
 }
 
-func (c *oauthAttemptCache) ConsumeLogin(rawState string, now time.Time) (oauthAttempt, error) {
-	attempt, err := c.Consume("", rawState, now)
-	if err != nil || attempt.purpose != oauthPurposeLogin {
+func (c *oauthAttemptCache) ConsumeLogin(rawState, rawBinding string, now time.Time) (oauthAttempt, error) {
+	stateHash := sha256.Sum256([]byte(rawState))
+	bindingHash := sha256.Sum256([]byte(rawBinding))
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	attempt, ok := c.attempts[stateHash]
+	if !ok || attempt.userID != "" || attempt.purpose != oauthPurposeLogin || !attempt.expiresAt.After(now) || attempt.loginBindingHash != bindingHash {
 		return oauthAttempt{}, errOAuthAttemptInvalid
 	}
+	delete(c.attempts, stateHash)
 	return attempt, nil
 }
 

@@ -209,3 +209,12 @@ type PublishedArticle struct {
 	Article
 	Reviews ReviewSummary `json:"reviews"`
 }
+
+type PublishedArticleOrder string
+
+const (
+	PublishedArticleOrderNewest     PublishedArticleOrder = "newest"
+	PublishedArticleOrderOldest     PublishedArticleOrder = "oldest"
+	PublishedArticleOrderRatingDesc PublishedArticleOrder = "rating-desc"
+	PublishedArticleOrderRatingAsc  PublishedArticleOrder = "rating-asc"
+)

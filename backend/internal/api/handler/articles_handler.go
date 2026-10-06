@@ -30,7 +30,15 @@ func (h *Handler) ListPublishedArticles(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	articles, err := h.service.ListPublishedArticles(r.Context(), user.ID)
+	order := model.PublishedArticleOrder(r.URL.Query().Get("sort"))
+	switch order {
+	case model.PublishedArticleOrderOldest, model.PublishedArticleOrderRatingDesc, model.PublishedArticleOrderRatingAsc:
+	case model.PublishedArticleOrderNewest:
+	default:
+		order = model.PublishedArticleOrderNewest
+	}
+
+	articles, err := h.service.ListPublishedArticles(r.Context(), user.ID, order)
 	if err != nil {
 		h.logger.Error("list published articles", "error", err)
 		writeError(w, http.StatusInternalServerError, "SourceInk couldn't load published articles")
