@@ -91,6 +91,9 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if cfg.Environment == "production" && !cfg.CookieSecure {
+		return Config{}, errors.New("COOKIE_SECURE must be true when APP_ENV=production")
+	}
 	cfg.AutoMigrate, err = boolValue("AUTO_MIGRATE", false)
 	if err != nil {
 		return Config{}, err

@@ -3,6 +3,7 @@ package github
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -16,6 +17,10 @@ type ParsedMarkdown struct {
 }
 
 var errFrontmatterBlockMissing = errors.New("complete frontmatter block is required")
+
+var articleSlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+
+const maxArticleSlugLength = 80
 
 func ParseFrontmatter(markdown string) (ParsedMarkdown, error) {
 	source := strings.ReplaceAll(markdown, "\r\n", "\n")
@@ -61,6 +66,9 @@ func ValidateFrontmatter(fm model.Frontmatter) error {
 
 	if strings.TrimSpace(fm.Slug) == "" {
 		return errors.New("slug is required")
+	}
+	if len(fm.Slug) > maxArticleSlugLength || !articleSlugPattern.MatchString(fm.Slug) {
+		return errors.New("slug must be 1-80 lowercase letters, numbers, or single hyphens")
 	}
 
 	switch fm.PublishMode {

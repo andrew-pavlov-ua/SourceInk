@@ -13,7 +13,9 @@ type ArticlesWorker struct {
 	service *Service
 }
 
-const articlesSyncInterval = 24 * time.Hour
+// Webhooks normally make pushes visible immediately. This reconciliation is a
+// small safety net for missed deliveries and restarts.
+const articlesSyncInterval = 15 * time.Minute
 
 func NewArticlesWorker(service *Service) *ArticlesWorker {
 	return &ArticlesWorker{service: service}

@@ -40,6 +40,27 @@ func (h *Handler) ListPublishedArticles(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, articles)
 }
 
+func (h *Handler) PublishedArticleBySlug(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.optionalCurrentUser(w, r)
+	if !ok {
+		return
+	}
+
+	slug := chi.URLParam(r, "slug")
+	article, err := h.service.PublishedArticleBySlug(r.Context(), slug, user.ID)
+	if errors.Is(err, model.ErrPublishedArticleNotFound) {
+		writeError(w, http.StatusNotFound, model.ErrPublishedArticleNotFound.Error())
+		return
+	}
+	if err != nil {
+		h.logger.Error("load published article", "slug", slug, "error", err)
+		writeError(w, http.StatusInternalServerError, "SourceInk couldn't load the article")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, article)
+}
+
 func (h *Handler) PublishArticle(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.currentUser(w, r)
 	if !ok {

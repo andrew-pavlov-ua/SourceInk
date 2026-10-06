@@ -9,6 +9,21 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+func TestLoadRequiresSecureCookiesInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "postgres://sourceink:password@localhost/sourceink")
+	t.Setenv("COOKIE_SECURE", "false")
+	t.Setenv("GITHUB_PUBLISHER_APP_SLUG", "")
+	t.Setenv("GITHUB_PUBLISHER_CLIENT_ID", "")
+	t.Setenv("GITHUB_PUBLISHER_CLIENT_SECRET", "")
+	t.Setenv("GITHUB_PUBLISHER_PRIVATE_KEY_PATH", "")
+	t.Setenv("GITHUB_WEBHOOK_SECRET", "")
+
+	if _, err := Load(); err == nil || err.Error() != "COOKIE_SECURE must be true when APP_ENV=production" {
+		t.Fatalf("Load() error = %v", err)
+	}
+}
+
 func TestGitHubAppJWT(t *testing.T) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

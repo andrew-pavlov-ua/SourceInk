@@ -129,6 +129,10 @@ Write the article here.
 
 Push the file to GitHub. SourceInk receives the push and shows the draft in the Articles dashboard. Use `publish_mode: manual` to publish from SourceInk. Use `publish_mode: auto` to publish after SourceInk validates a synced file.
 
+Article slugs use lowercase letters, numbers, and single hyphens. Markdown source files may be up to 512 KiB.
+
+GitHub webhooks normally trigger the sync immediately. SourceInk also reconciles connected repositories every 15 minutes so a missed delivery or server restart does not leave drafts stale indefinitely.
+
 ## Run locally
 
 Use local mode when you work on SourceInk code. Complete the GitHub App setup in sections 1 through 4 first. The current Compose configuration always mounts the GitHub App private key, and the backend rejects incomplete GitHub credentials. A copied `.env.example` with its placeholder values cannot start the backend.
@@ -172,6 +176,8 @@ make migrate
 make migrate-status
 make migration name=add_articles
 ```
+
+The current MVP is still in its bootstrap stage, so its complete schema lives in `backend/internal/database/migrations/00001_users.sql`. Do not edit that file after the first shared or production deployment; create a new ordered migration with `make migration` for every later schema change.
 
 `make migrate` runs `sourceink-migrate up` manually, but it does not disable the startup migration. For a controlled production migration step, set `AUTO_MIGRATE=false` in the deployment configuration and run `sourceink-migrate up` before starting the backend. Set `COOKIE_SECURE=true` behind HTTPS.
 

@@ -2,30 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { articleMetadata, articleReadingTime, articleTitle } from "@/lib/article-display";
 import type { ReviewedPublishedArticle } from "@/lib/backend";
 
 type SortOrder = "desc" | "asc";
-
-type ArticleMetadata = {
-  description: string;
-  tags: string[];
-};
-
-function articleTitle(article: ReviewedPublishedArticle) {
-  return article.title || article.source_path.split("/").at(-1)?.replace(/\.md$/i, "") || "Untitled article";
-}
-
-function articleMetadata(article: ReviewedPublishedArticle): ArticleMetadata {
-  if (typeof article.frontmatter !== "object" || article.frontmatter === null) {
-    return { description: "", tags: [] };
-  }
-
-  const frontmatter = article.frontmatter as Record<string, unknown>;
-  return {
-    description: typeof frontmatter.description === "string" ? frontmatter.description : "",
-    tags: Array.isArray(frontmatter.tags) ? frontmatter.tags.filter((tag): tag is string => typeof tag === "string") : [],
-  };
-}
 
 function publishedTimestamp(value: string) {
   const timestamp = Date.parse(value);
@@ -36,11 +16,6 @@ function displayDate(value: string) {
   const timestamp = publishedTimestamp(value);
   if (timestamp === null) return "Date unavailable";
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(timestamp);
-}
-
-function readingTime(markdown: string) {
-  const words = markdown.trim().split(/\s+/).filter(Boolean).length;
-  return `${Math.max(1, Math.ceil(words / 200))} min read`;
 }
 
 function sortArticles(articles: ReviewedPublishedArticle[], order: SortOrder) {
@@ -101,7 +76,7 @@ export function ArticleFeed({ username, articles, loadFailed }: { username: stri
           ) : (
             <div className="feed-list">
               {sortedArticles.map((article) => {
-                const metadata = articleMetadata(article);
+                const metadata = articleMetadata(article.frontmatter);
                 const title = articleTitle(article);
                 const articleHref = `/articles/${encodeURIComponent(article.slug)}`;
                 return (
@@ -113,7 +88,7 @@ export function ArticleFeed({ username, articles, loadFailed }: { username: stri
                       <p className="feed-meta">
                         <span>By @{article.author_username || username}</span>
                         <time dateTime={article.published_at}>{displayDate(article.published_at)}</time>
-                        <span>{readingTime(article.markdown)}</span>
+                        <span>{articleReadingTime(article.markdown)}</span>
                         <span className="feed-review-signals" aria-label={`${article.reviews.approveCount} approvals and ${article.reviews.requestChangesCount} change requests`}>
                           <span className="feed-review-approvals">{article.reviews.approveCount.toLocaleString()} approved</span>
                           <span className="feed-review-changes">{article.reviews.requestChangesCount.toLocaleString()} changes</span>

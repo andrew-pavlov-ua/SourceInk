@@ -20,10 +20,12 @@ const allowedPaths = new Set([
 ]);
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const articleSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function isAllowedPath(path: string[]) {
   const joinedPath = path.join("/");
   return allowedPaths.has(joinedPath)
+    || (path.length === 2 && path[0] === "published-articles" && articleSlugPattern.test(path[1]))
     || (path.length === 3 && path[0] === "articles" && uuidPattern.test(path[1]) && path[2] === "publish")
     || (path.length === 3
       && path[0] === "published-articles"

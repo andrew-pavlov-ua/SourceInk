@@ -5,7 +5,8 @@ import { notFound } from "next/navigation";
 import { ArticleDiff } from "@/components/article-diff";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { PublishArticleButton } from "@/components/publish-article-button";
-import { getArticles, type PublishedArticle, type UnpublishedArticle } from "@/lib/backend";
+import { articleTitle, frontmatterRecord, stringArray } from "@/lib/article-display";
+import { getArticles } from "@/lib/backend";
 
 export const metadata: Metadata = { title: "Article configuration" };
 
@@ -23,18 +24,6 @@ function displayDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Not recorded";
   return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(date);
-}
-
-function articleTitle(article: PublishedArticle | UnpublishedArticle) {
-  return article.title || article.source_path.split("/").at(-1)?.replace(/\.md$/i, "") || "Untitled article";
-}
-
-function frontmatterRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
-}
-
-function stringArray(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
 function articleSource(

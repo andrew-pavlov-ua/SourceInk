@@ -5,17 +5,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ArticleReview } from "@/components/article-review";
 import { PublicPageShell } from "@/components/public-page-shell";
-import { getPublishedArticles, type ReviewedPublishedArticle } from "@/lib/backend";
+import { articleMetadata, articleReadingTime } from "@/lib/article-display";
+import { getPublishedArticle, type ReviewedPublishedArticle } from "@/lib/backend";
 
 type PublishedArticlePageProps = {
   params: Promise<{ slug: string }>;
 };
-
-function description(article: ReviewedPublishedArticle) {
-  if (typeof article.frontmatter !== "object" || article.frontmatter === null) return "";
-  const value = (article.frontmatter as Record<string, unknown>).description;
-  return typeof value === "string" ? value : "";
-}
 
 function displayDate(value: string) {
   const date = new Date(value);
@@ -23,17 +18,12 @@ function displayDate(value: string) {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(date);
 }
 
-function readingTime(markdown: string) {
-  const words = markdown.trim().split(/\s+/).filter(Boolean).length;
-  return `${Math.max(1, Math.ceil(words / 200))} min read`;
-}
-
 export default async function PublishedArticlePage({ params }: PublishedArticlePageProps) {
   const { slug } = await params;
-  let articles: ReviewedPublishedArticle[];
+  let article: ReviewedPublishedArticle | null;
   try {
     const cookieStore = await cookies();
-    articles = await getPublishedArticles(cookieStore.toString());
+    article = await getPublishedArticle(slug, cookieStore.toString());
   } catch {
     return (
       <PublicPageShell>
@@ -47,9 +37,8 @@ export default async function PublishedArticlePage({ params }: PublishedArticleP
       </PublicPageShell>
     );
   }
-
-  const article = articles.find((candidate) => candidate.slug === slug);
   if (!article) notFound();
+  const description = articleMetadata(article.frontmatter).description;
 
   return (
     <PublicPageShell>
@@ -57,10 +46,10 @@ export default async function PublishedArticlePage({ params }: PublishedArticleP
         <header className="reader-header">
           <Link className="reader-publication" href="/">SourceInk</Link>
           <h1>{article.title}</h1>
-          {description(article) && <p className="reader-deck">{description(article)}</p>}
+          {description && <p className="reader-deck">{description}</p>}
           <div className="reader-meta">
             <span>By @{article.author_username}</span>
-            <span>{readingTime(article.markdown)}</span>
+            <span>{articleReadingTime(article.markdown)}</span>
             <span>Published {displayDate(article.published_at)}</span>
           </div>
         </header>

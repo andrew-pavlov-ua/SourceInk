@@ -3,6 +3,7 @@ package articles
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -10,6 +11,8 @@ import (
 )
 
 const maxArticleTitleLength = 120
+
+var articleSlugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 // ValidateArticle applies the publication rules that do not require storage.
 // It returns the draft with an actionable ValidationError when the article is
@@ -47,15 +50,12 @@ func (s *Service) ValidateArticle(
 
 	if strings.TrimSpace(draft.Slug) == "" {
 		issues = append(issues, "slug is required")
+	} else if len(draft.Slug) > 80 || !articleSlugPattern.MatchString(draft.Slug) {
+		issues = append(issues, "slug must be 1-80 lowercase letters, numbers, or single hyphens")
 	}
 
 	if len(issues) == 0 {
 		return draft, nil
-	}
-
-	err := ValidateWordsProcentile(strings.Fields(draft.Content))
-	if err != nil {
-		issues = append(issues, fmt.Sprintf("one word is used too many times in the article: %s", err))
 	}
 
 	validationMessage := strings.Join(issues, "; ")
@@ -66,21 +66,4 @@ func (s *Service) ValidateArticle(
 		validationMessage,
 		model.ErrArticleNotPublishable,
 	)
-}
-
-const maxWordProcentile = 0.3
-
-func ValidateWordsProcentile(wordsSummary []string) error {
-	wordCount := make(map[string]int)
-	for _, word := range wordsSummary {
-		wordCount[word]++
-	}
-
-	for word, count := range wordCount {
-		if float64(count)/float64(len(wordsSummary)) > maxWordProcentile {
-			return fmt.Errorf("word \"%s\" used more than %d%% of the text", word, int(maxWordProcentile*100))
-		}
-	}
-
-	return nil
 }

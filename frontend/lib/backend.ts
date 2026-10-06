@@ -137,6 +137,20 @@ export async function getPublishedArticles(cookieHeader = ""): Promise<ReviewedP
   return articles as ReviewedPublishedArticle[];
 }
 
+export async function getPublishedArticle(slug: string, cookieHeader = ""): Promise<ReviewedPublishedArticle | null> {
+  const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
+  const response = await fetch(`${baseURL}/api/published-articles/${encodeURIComponent(slug)}`, {
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+    cache: "no-store",
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`published article lookup failed with status ${response.status}`);
+
+  const article = parsePublishedArticle(await response.json());
+  if (!article) throw new Error("published article lookup returned an invalid response");
+  return article;
+}
+
 function parsePublishedArticle(value: unknown): ReviewedPublishedArticle | null {
   if (!isObject(value)) return null;
   const reviews = parseReviewSummary(value.reviews);

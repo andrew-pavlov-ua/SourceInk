@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { FrontmatterGuide } from "@/components/frontmatter-guide";
+import { articleTitle } from "@/lib/article-display";
 import { getArticles, type PublishedArticle, type UnpublishedArticle } from "@/lib/backend";
 
 export const metadata: Metadata = { title: "Articles" };
@@ -17,10 +18,6 @@ publish_mode: manual
 ---
 
 # Postgres indexes that scale`;
-
-function articleTitle(article: PublishedArticle | UnpublishedArticle) {
-  return article.title || article.source_path.split("/").at(-1)?.replace(/\.md$/i, "") || "Untitled article";
-}
 
 function displayDate(value: string) {
   const date = new Date(value);

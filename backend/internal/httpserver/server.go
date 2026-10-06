@@ -95,6 +95,7 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 		r.Get("/articles", apiHandler.ListArticles)
 		r.Post("/articles/{draftID}/publish", apiHandler.PublishArticle)
 		r.Get("/published-articles", apiHandler.ListPublishedArticles)
+		r.Get("/published-articles/{slug}", apiHandler.PublishedArticleBySlug)
 		r.Get("/published-articles/{articleID}/reviews", apiHandler.GetReviewSummary)
 		r.Put("/published-articles/{articleID}/review", apiHandler.CreateReview)
 		r.Delete("/published-articles/{articleID}/review", apiHandler.DeleteReview)

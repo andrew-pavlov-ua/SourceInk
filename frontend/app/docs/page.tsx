@@ -48,6 +48,7 @@ export default function DocsPage() {
           <section id="write">
             <h2>Write a source file</h2>
             <p>Create a Markdown file in a connected repository. Put its frontmatter on the first line, between an opening and closing <code>---</code>. Write the article body after the closing delimiter.</p>
+            <p>Keep each Markdown source file at or below 512 KiB.</p>
           </section>
 
           <section id="frontmatter">

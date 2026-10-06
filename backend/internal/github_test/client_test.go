@@ -157,9 +157,11 @@ func TestListMarkdownFilesFiltersRecursiveTree(t *testing.T) {
 }
 
 func TestLoadUnpublishedArticlesReturnsDecodedMarkdown(t *testing.T) {
+	tokenRequests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/app/installations/42/access_tokens":
+			tokenRequests++
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"token":"installation-token"}`))
 		case "/repos/octocat/docs/git/trees/main":
@@ -189,6 +191,9 @@ func TestLoadUnpublishedArticlesReturnsDecodedMarkdown(t *testing.T) {
 	if len(articles) != 1 {
 		t.Fatalf("articles = %#v", articles)
 	}
+	if tokenRequests != 1 {
+		t.Fatalf("installation token requests = %d, want 1 per repository sync", tokenRequests)
+	}
 	article := articles[0]
 	if article.RepositoryID != "repository-id" || article.SourcePath != "guides/setup.md" ||
 		article.GitBlobSHA != "setup-sha" || article.Content != "# Hello\n" || !article.Present ||
@@ -196,6 +201,36 @@ func TestLoadUnpublishedArticlesReturnsDecodedMarkdown(t *testing.T) {
 		article.Description != "Greeting" || article.PublishMode != "manual" ||
 		len(article.Tags) != 1 || article.Tags[0] != "intro" {
 		t.Errorf("article = %#v", article)
+	}
+}
+
+func TestLoadUnpublishedArticlesRejectsOversizedMarkdownBeforeFetchingBlob(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app/installations/42/access_tokens":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"installation-token"}`))
+		case "/repos/octocat/docs/git/trees/main":
+			_, _ = w.Write([]byte(`{"sha":"tree-sha","truncated":false,"tree":[{"path":"huge.md","mode":"100644","type":"blob","size":600000,"sha":"huge-sha"}]}`))
+		default:
+			t.Fatalf("unexpected request for oversized Markdown: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client, err := newTestClient(server.Client(), server.URL, func() (string, error) { return "signed-app-jwt", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	articles, err := client.LoadUnpublishedArticlesByRepo(context.Background(), model.Repository{
+		ID: "repository-id", InstallationID: 42, Owner: "octocat", Name: "docs", DefaultBranch: "main",
+	})
+	if err != nil {
+		t.Fatalf("LoadUnpublishedArticlesByRepo() error = %v", err)
+	}
+	if len(articles) != 1 || articles[0].ValidationError == nil || articles[0].SourcePath != "huge.md" {
+		t.Fatalf("oversized article = %#v", articles)
 	}
 }
 

@@ -61,6 +61,19 @@ func TestValidateArticleCountsTitleCharactersAsRunes(t *testing.T) {
 	}
 }
 
+func TestValidateArticleRejectsUnsafeSlug(t *testing.T) {
+	draft := validationTestDraft()
+	draft.Slug = "../../admin"
+
+	validated, err := new(articles.Service).ValidateArticle(context.Background(), draft)
+	if !errors.Is(err, model.ErrArticleNotPublishable) {
+		t.Fatalf("ValidateArticle() error = %v, want ErrArticleNotPublishable", err)
+	}
+	if validated.ValidationError == nil || !strings.Contains(*validated.ValidationError, "lowercase letters") {
+		t.Fatalf("ValidateArticle() validation error = %v", validated.ValidationError)
+	}
+}
+
 func TestValidateArticlePreservesParserValidationError(t *testing.T) {
 	draft := validationTestDraft()
 	parserError := "publish_mode must be manual or auto"

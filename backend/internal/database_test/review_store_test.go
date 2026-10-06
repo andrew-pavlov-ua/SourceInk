@@ -108,6 +108,17 @@ func TestReviewStoreReplaceAndDelete(t *testing.T) {
 		t.Fatalf("published article viewer review = %#v", summary.ViewerReview)
 	}
 
+	bySlug, err := store.PublishedArticleBySlug(ctx, "review-store-test", reviewerID)
+	if err != nil {
+		t.Fatalf("PublishedArticleBySlug(): %v", err)
+	}
+	if bySlug.ID != articleID || bySlug.Reviews.ViewerReview == nil || bySlug.Reviews.RequestChangesCount != 1 {
+		t.Fatalf("PublishedArticleBySlug() = %#v", bySlug)
+	}
+	if _, err := store.PublishedArticleBySlug(ctx, "missing-article", reviewerID); !errors.Is(err, model.ErrPublishedArticleNotFound) {
+		t.Fatalf("PublishedArticleBySlug(missing) error = %v", err)
+	}
+
 	staleReview := review
 	staleReview.GitBlobSHA = "stale-blob-sha"
 	if err := store.CreateReview(ctx, &staleReview); !errors.Is(err, model.ErrArticleReviewStale) {

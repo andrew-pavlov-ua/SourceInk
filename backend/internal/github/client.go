@@ -21,6 +21,7 @@ const (
 	defaultOAuthTokenURL = "https://github.com/login/oauth/access_token"
 	githubAPIVersion     = "2022-11-28"
 	maxResponseBytes     = 1 << 20
+	maxMarkdownBytes     = 512 << 10
 )
 
 type ClientConfig struct {
@@ -484,7 +485,12 @@ func (g *GitHubClient) LoadUnpublishedArticlesByRepo(
 		return nil, errors.New("load unpublished articles: installation ID must be positive")
 	}
 
-	mdFiles, err := g.ListMarkdownFiles(ctx, repository, repository.InstallationID)
+	token, err := g.CreateInstallationToken(ctx, repository.InstallationID)
+	if err != nil {
+		return nil, fmt.Errorf("load unpublished articles: create installation token: %w", err)
+	}
+
+	mdFiles, err := g.listMarkdownFilesWithToken(ctx, repository, token)
 	if err != nil {
 		return nil, fmt.Errorf("load unpublished articles: list Markdown files: %w", err)
 	}
@@ -494,7 +500,18 @@ func (g *GitHubClient) LoadUnpublishedArticlesByRepo(
 
 	unpublishedArticles := make([]model.UnpublishedArticle, 0, len(mdFiles.Files))
 	for _, file := range mdFiles.Files {
-		markdownFile, err := g.FetchMarkdownFile(ctx, repository, repository.InstallationID, file)
+		if file.Size > maxMarkdownBytes {
+			validationError := fmt.Sprintf("Markdown file is too large: maximum size is %d KiB", maxMarkdownBytes/1024)
+			unpublishedArticles = append(unpublishedArticles, model.UnpublishedArticle{
+				RepositoryID:    repository.ID,
+				SourcePath:      file.Path,
+				GitBlobSHA:      file.BlobSHA,
+				ValidationError: &validationError,
+				Present:         true,
+			})
+			continue
+		}
+		markdownFile, err := g.fetchMarkdownFileWithToken(ctx, repository, token, file)
 		if err != nil {
 			return nil, fmt.Errorf("load unpublished articles: fetch %s: %w", file.Path, err)
 		}
@@ -531,7 +548,15 @@ func (g *GitHubClient) LoadUnpublishedArticlesByRepo(
 }
 
 func (g *GitHubClient) ListMarkdownFiles(ctx context.Context, repo model.Repository, installationID int64) (*model.FileList, error) {
-	treeResponse, err := g.ListTree(ctx, repo, installationID)
+	token, err := g.CreateInstallationToken(ctx, installationID)
+	if err != nil {
+		return nil, fmt.Errorf("create installation token: %w", err)
+	}
+	return g.listMarkdownFilesWithToken(ctx, repo, token)
+}
+
+func (g *GitHubClient) listMarkdownFilesWithToken(ctx context.Context, repo model.Repository, token string) (*model.FileList, error) {
+	treeResponse, err := g.listTreeWithToken(ctx, repo, token)
 	if err != nil {
 		return nil, fmt.Errorf("list repository tree: %w", err)
 	}
@@ -563,7 +588,10 @@ func (g *GitHubClient) ListTree(ctx context.Context, repo model.Repository, inst
 	if err != nil {
 		return nil, fmt.Errorf("create installation token: %w", err)
 	}
+	return g.listTreeWithToken(ctx, repo, token)
+}
 
+func (g *GitHubClient) listTreeWithToken(ctx context.Context, repo model.Repository, token string) (*TreeResponse, error) {
 	endpoint := fmt.Sprintf(
 		"%s/repos/%s/%s/git/trees/%s?recursive=1",
 		g.apiBaseURL,
@@ -607,7 +635,15 @@ func (g *GitHubClient) FetchMarkdownFile(
 	if err != nil {
 		return model.MarkdownFile{}, fmt.Errorf("create installation token: %w", err)
 	}
+	return g.fetchMarkdownFileWithToken(ctx, repo, token, file)
+}
 
+func (g *GitHubClient) fetchMarkdownFileWithToken(
+	ctx context.Context,
+	repo model.Repository,
+	token string,
+	file model.RepositoryFile,
+) (model.MarkdownFile, error) {
 	endpoint := fmt.Sprintf(
 		"%s/repos/%s/%s/git/blobs/%s",
 		g.apiBaseURL,

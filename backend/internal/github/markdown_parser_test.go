@@ -43,3 +43,10 @@ func TestParseFrontmatterAcceptsAutoPublishMode(t *testing.T) {
 		t.Fatalf("publish mode = %q, want auto", parsed.Frontmatter.PublishMode)
 	}
 }
+
+func TestParseFrontmatterRejectsUnsafeSlug(t *testing.T) {
+	_, err := ParseFrontmatter("---\ntitle: Hello\nslug: Hello World\npublish_mode: manual\n---\n# Hello")
+	if err == nil || err.Error() != "error validating frontmatter: slug must be 1-80 lowercase letters, numbers, or single hyphens" {
+		t.Fatalf("ParseFrontmatter() error = %v", err)
+	}
+}

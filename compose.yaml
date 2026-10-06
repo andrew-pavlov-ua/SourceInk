@@ -25,7 +25,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-sourceink}:${POSTGRES_PASSWORD:-change-this-development-password}@postgres:5432/${POSTGRES_DB:-sourceink}?sslmode=disable
       APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
       COOKIE_SECURE: ${COOKIE_SECURE}
-      AUTO_MIGRATE: "true"
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
       DEV_ADMIN_EMAIL: ${DEV_ADMIN_EMAIL:-admin@sourceink.local}
       DEV_ADMIN_USERNAME: ${DEV_ADMIN_USERNAME:-sourceink-admin}
       DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:?set DEV_ADMIN_PASSWORD in .env}
