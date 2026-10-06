@@ -25,13 +25,13 @@ const (
 	articleColumns = `
 		a.id, a.unpublished_article_id, a.owner_id, u.username as author_username,
 		a.repository_id, a.source_path, a.slug, a.publish_mode, a.source_state,
-		a.git_blob_sha, a.markdown, a.title, a.frontmatter, a.published_at,
+		a.git_blob_sha, a.markdown, a.title, a.frontmatter, a.view_count, a.published_at,
 		a.created_at, a.updated_at`
 
 	articleReturningColumns = `
 		id, unpublished_article_id, owner_id, repository_id, source_path, slug,
 		publish_mode, source_state, git_blob_sha, markdown, title, frontmatter,
-		published_at, created_at, updated_at`
+		view_count, published_at, created_at, updated_at`
 
 	articleFrom = `
 		from articles as a
@@ -299,6 +299,25 @@ func (s *Store) PublishedArticleBySlug(ctx context.Context, slug, viewerID strin
 		return model.PublishedArticle{}, model.ErrPublishedArticleNotFound
 	}
 	return articles[0], nil
+}
+
+func (s *Store) IncrementArticleViewCount(ctx context.Context, articleID string) error {
+	result, err := s.db.ExecContext(ctx, `
+		update articles
+		set view_count = view_count + 1
+		where id = $1
+	`, articleID)
+	if err != nil {
+		return fmt.Errorf("increment article view count: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read incremented article count: %w", err)
+	}
+	if rowsAffected == 0 {
+		return model.ErrPublishedArticleNotFound
+	}
+	return nil
 }
 
 func publishedArticleOrderBy(order model.PublishedArticleOrder) string {

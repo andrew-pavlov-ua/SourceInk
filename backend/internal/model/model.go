@@ -125,6 +125,7 @@ type Article struct {
 	Markdown             string             `db:"markdown" json:"markdown"`
 	Title                string             `db:"title" json:"title"`
 	Frontmatter          *json.RawMessage   `db:"frontmatter" json:"frontmatter,omitempty"`
+	ViewCount            int64              `db:"view_count" json:"view_count"`
 	PublishedAt          time.Time          `db:"published_at" json:"published_at"`
 	CreatedAt            time.Time          `db:"created_at" json:"created_at"`
 	UpdatedAt            time.Time          `db:"updated_at" json:"updated_at"`

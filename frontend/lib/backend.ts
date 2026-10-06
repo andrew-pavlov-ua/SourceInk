@@ -62,6 +62,7 @@ export type PublishedArticle = {
   markdown: string;
   title: string;
   frontmatter?: unknown;
+  view_count: number;
   published_at: string;
   created_at: string;
   updated_at: string;
@@ -167,6 +168,7 @@ function parsePublishedArticle(value: unknown): ReviewedPublishedArticle | null 
     || typeof value.git_blob_sha !== "string"
     || typeof value.markdown !== "string"
     || typeof value.title !== "string"
+    || typeof value.view_count !== "number"
     || typeof value.published_at !== "string"
     || typeof value.created_at !== "string"
     || typeof value.updated_at !== "string"

@@ -105,12 +105,13 @@ export default async function DashboardPage() {
                 <span>{publishedArticles.length}</span>
               </header>
               <div className="article-table">
-                <div className="article-table-head" aria-hidden="true"><span>Article</span><span>Source</span><span>Published</span><span>State</span></div>
+                <div className="article-table-head article-table-head-published" aria-hidden="true"><span>Article</span><span>Source</span><span>Published</span><span>Views</span><span>State</span></div>
                 {publishedArticles.map((article) => (
-                  <Link className="article-row" href={`/dashboard/articles/${encodeURIComponent(article.id)}`} key={article.id} aria-label={`Inspect ${articleTitle(article)}`}>
+                  <Link className="article-row article-row-published" href={`/dashboard/articles/${encodeURIComponent(article.id)}`} key={article.id} aria-label={`Inspect ${articleTitle(article)}`}>
                     <div><strong>{articleTitle(article)}</strong><p>/{article.slug}</p></div>
                     <code>{article.source_path}</code>
                     <span>{displayDate(article.published_at)}</span>
+                    <span>{article.view_count.toLocaleString()}</span>
                     <span className={`article-state${article.source_state === "available" ? "" : " article-state-error"}`}>{article.source_state.replace("_", " ")}</span>
                   </Link>
                 ))}

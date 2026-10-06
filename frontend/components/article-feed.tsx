@@ -71,6 +71,13 @@ export function ArticleFeed({ username, articles, loadFailed, order }: { usernam
     sortOptionRefs.current[nextIndex]?.focus();
   }
 
+  function countView(articleId: string) {
+    void fetch(`/api/published-articles/${encodeURIComponent(articleId)}/views`, {
+      method: "POST",
+      keepalive: true,
+    });
+  }
+
   return (
     <main id="main-content" className="article-feed">
       <div className="article-feed-frame">
@@ -176,19 +183,20 @@ export function ArticleFeed({ username, articles, loadFailed, order }: { usernam
                   <article className="feed-article" key={article.id}>
                     <div className="feed-article-body">
                       <p className="feed-topic">{metadata.tags[0] ?? "Published article"}</p>
-                      <h3><Link href={articleHref}>{title}</Link></h3>
+                      <h3><Link href={articleHref} onClick={() => countView(article.id)}>{title}</Link></h3>
                       <p className="feed-description">{metadata.description || "No description was saved with this publication."}</p>
                       <p className="feed-meta">
                         <span>By @{article.author_username || username}</span>
                         <time dateTime={article.published_at}>{displayDate(article.published_at)}</time>
                         <span>{articleReadingTime(article.markdown)}</span>
+                        <span>{article.view_count.toLocaleString()} {article.view_count === 1 ? "view" : "views"}</span>
                         <span className="feed-review-signals" aria-label={`${article.reviews.approveCount} approvals and ${article.reviews.requestChangesCount} change requests`}>
                           <span className="feed-review-approvals">{article.reviews.approveCount.toLocaleString()} approved</span>
                           <span className="feed-review-changes">{article.reviews.requestChangesCount.toLocaleString()} changes</span>
                         </span>
                       </p>
                     </div>
-                    <Link className="feed-read-link" href={articleHref} aria-label={`Read ${title}`}>Read article</Link>
+                    <Link className="feed-read-link" href={articleHref} aria-label={`Read ${title}`} onClick={() => countView(article.id)}>Read article</Link>
                   </article>
                 );
               })}

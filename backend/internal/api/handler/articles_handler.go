@@ -69,6 +69,19 @@ func (h *Handler) PublishedArticleBySlug(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, article)
 }
 
+func (h *Handler) IncrementArticleViewCount(w http.ResponseWriter, r *http.Request) {
+	articleID := chi.URLParam(r, "articleID")
+	if err := h.service.IncrementArticleViewCount(r.Context(), articleID); errors.Is(err, model.ErrPublishedArticleNotFound) {
+		writeError(w, http.StatusNotFound, model.ErrPublishedArticleNotFound.Error())
+		return
+	} else if err != nil {
+		h.logger.Error("increment article view count", "article_id", articleID, "error", err)
+		writeError(w, http.StatusInternalServerError, "SourceInk couldn't count the article view")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) PublishArticle(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.currentUser(w, r)
 	if !ok {

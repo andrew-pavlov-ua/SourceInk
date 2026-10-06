@@ -23,6 +23,13 @@ func (s *Service) PublishedArticleBySlug(ctx context.Context, slug, viewerID str
 	return article, nil
 }
 
+func (s *Service) IncrementArticleViewCount(ctx context.Context, articleID string) error {
+	if err := s.store.IncrementArticleViewCount(ctx, articleID); err != nil {
+		return fmt.Errorf("increment article %s view count: %w", articleID, err)
+	}
+	return nil
+}
+
 func (s *Service) PublishArticle(ctx context.Context, userID, draftID string) (model.Article, error) {
 	article, err := s.articles.PublishArticle(ctx, userID, draftID)
 	if err != nil {

@@ -31,7 +31,7 @@ function isAllowedPath(path: string[]) {
     || (path.length === 3
       && path[0] === "published-articles"
       && uuidPattern.test(path[1])
-      && (path[2] === "review" || path[2] === "reviews"));
+      && (path[2] === "review" || path[2] === "reviews" || path[2] === "views"));
 }
 
 async function readBoundedRequestBody(request: NextRequest) {

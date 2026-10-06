@@ -98,6 +98,7 @@ create table articles (
     markdown text not null,
     title text not null,
     frontmatter jsonb,
+    view_count bigint not null default 0 check (view_count >= 0),
     published_at timestamptz not null default now(),
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()

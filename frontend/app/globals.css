@@ -2065,6 +2065,10 @@ select:focus-visible,
     gap: 20px;
     align-items: center;
 }
+.article-table-head-published,
+.article-row-published {
+    grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 0.85fr) minmax(110px, 0.45fr) minmax(64px, 0.25fr) minmax(110px, 0.45fr);
+}
 .article-table-head {
     min-height: 34px;
     padding: 0 16px;
@@ -2903,6 +2907,9 @@ select:focus-visible,
     .article-row {
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 10px 18px;
+    }
+    .article-row-published {
+        grid-template-columns: minmax(0, 1fr) repeat(3, auto);
     }
     .article-row > div {
         grid-column: 1 / -1;
