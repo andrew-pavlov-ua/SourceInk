@@ -24,6 +24,8 @@ type webhookTestStore struct {
 	recordedID   string
 	completedID  string
 	completedErr error
+	suspendedID  int64
+	suspended    bool
 }
 
 func (s *webhookTestStore) RecordGitHubWebhookDelivery(_ context.Context, deliveryID, _ string, _, _ int64) (bool, error) {
@@ -38,6 +40,14 @@ func (s *webhookTestStore) CompleteGitHubWebhookDelivery(_ context.Context, deli
 	defer s.mu.Unlock()
 	s.completedID = deliveryID
 	s.completedErr = processingErr
+	return nil
+}
+
+func (s *webhookTestStore) SetInstallationSuspended(_ context.Context, installationID int64, suspended bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.suspendedID = installationID
+	s.suspended = suspended
 	return nil
 }
 
@@ -144,4 +154,27 @@ func testWebhookSignature(secret string, body []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write(body)
 	return fmt.Sprintf("sha256=%x", mac.Sum(nil))
+}
+
+func TestWebhookInstallationDeletedSuspendsInstallation(t *testing.T) {
+	store := &webhookTestStore{newDelivery: true}
+	handler := NewWebhookHandler("secret", store, func(context.Context, int64, int64) error {
+		t.Fatal("sync should not run")
+		return nil
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	body := `{"action":"deleted","installation":{"id":44}}`
+	request := signedWebhookRequest(t, body, "delivery-2")
+	request.Header.Set("X-GitHub-Event", "installation")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+	}
+	if store.suspendedID != 44 || !store.suspended {
+		t.Fatalf("suspended = id:%d value:%t", store.suspendedID, store.suspended)
+	}
+	if store.recordedID != "" {
+		t.Fatalf("recorded delivery = %q", store.recordedID)
+	}
 }

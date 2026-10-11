@@ -91,12 +91,13 @@ Compose requires `DEV_ADMIN_PASSWORD` even in production. SourceInk only creates
 Run:
 
 ```sh
+make migrate
 make up
 docker compose ps
 curl --fail http://127.0.0.1:8080/readyz
 ```
 
-The last command should return a successful response. Open `https://sourceink.example.com` in your browser.
+`make migrate` applies the schema before the first start because production keeps `AUTO_MIGRATE=false`. The last command should return a successful response. Open `https://sourceink.example.com` in your browser.
 
 ### 6. Connect your repositories
 

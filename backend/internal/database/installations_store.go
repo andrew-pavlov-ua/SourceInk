@@ -77,3 +77,17 @@ func (s *Store) SaveInstallation(
 	}
 	return nil
 }
+
+// SetInstallationSuspended records an uninstall or suspension reported by
+// GitHub. Suspended installations are skipped by sync; published copies stay.
+func (s *Store) SetInstallationSuspended(ctx context.Context, installationID int64, suspended bool) error {
+	_, err := s.db.ExecContext(ctx, `
+		update github_installations
+		set suspended = $2, updated_at = now()
+		where installation_id = $1
+	`, installationID, suspended)
+	if err != nil {
+		return fmt.Errorf("set installation %d suspended=%t: %w", installationID, suspended, err)
+	}
+	return nil
+}

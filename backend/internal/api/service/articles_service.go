@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 
 	"sourceink/backend/internal/model"
 )
@@ -16,24 +15,13 @@ func (s *Service) ListPublishedArticles(ctx context.Context, viewerID string, or
 }
 
 func (s *Service) PublishedArticleBySlug(ctx context.Context, slug, viewerID string) (model.PublishedArticle, error) {
-	article, err := s.store.PublishedArticleBySlug(ctx, slug, viewerID)
-	if err != nil {
-		return model.PublishedArticle{}, fmt.Errorf("load published article %q: %w", slug, err)
-	}
-	return article, nil
+	return s.store.PublishedArticleBySlug(ctx, slug, viewerID)
 }
 
 func (s *Service) IncrementArticleViewCount(ctx context.Context, articleID string) error {
-	if err := s.store.IncrementArticleViewCount(ctx, articleID); err != nil {
-		return fmt.Errorf("increment article %s view count: %w", articleID, err)
-	}
-	return nil
+	return s.store.IncrementArticleViewCount(ctx, articleID)
 }
 
 func (s *Service) PublishArticle(ctx context.Context, userID, draftID string) (model.Article, error) {
-	article, err := s.articles.PublishArticle(ctx, userID, draftID)
-	if err != nil {
-		return model.Article{}, fmt.Errorf("publish article %s: %w", draftID, err)
-	}
-	return article, nil
+	return s.articles.PublishArticle(ctx, userID, draftID)
 }

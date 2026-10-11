@@ -477,9 +477,13 @@ func (g *GitHubClient) CreateInstallationToken(
 	return result.Token, nil
 }
 
+// LoadUnpublishedArticlesByRepo lists every Markdown candidate. A file whose blob
+// SHA equals knownBlobSHAs[path] is returned without content so the caller can
+// reuse its stored draft instead of downloading the blob again.
 func (g *GitHubClient) LoadUnpublishedArticlesByRepo(
 	ctx context.Context,
 	repository model.Repository,
+	knownBlobSHAs map[string]string,
 ) ([]model.UnpublishedArticle, error) {
 	if repository.InstallationID <= 0 {
 		return nil, errors.New("load unpublished articles: installation ID must be positive")
@@ -500,6 +504,15 @@ func (g *GitHubClient) LoadUnpublishedArticlesByRepo(
 
 	unpublishedArticles := make([]model.UnpublishedArticle, 0, len(mdFiles.Files))
 	for _, file := range mdFiles.Files {
+		if knownBlobSHAs[file.Path] == file.BlobSHA {
+			unpublishedArticles = append(unpublishedArticles, model.UnpublishedArticle{
+				RepositoryID: repository.ID,
+				SourcePath:   file.Path,
+				GitBlobSHA:   file.BlobSHA,
+				Present:      true,
+			})
+			continue
+		}
 		if file.Size > maxMarkdownBytes {
 			validationError := fmt.Sprintf("Markdown file is too large: maximum size is %d KiB", maxMarkdownBytes/1024)
 			unpublishedArticles = append(unpublishedArticles, model.UnpublishedArticle{

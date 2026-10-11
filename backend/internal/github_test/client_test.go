@@ -184,7 +184,7 @@ func TestLoadUnpublishedArticlesReturnsDecodedMarkdown(t *testing.T) {
 
 	articles, err := client.LoadUnpublishedArticlesByRepo(context.Background(), model.Repository{
 		ID: "repository-id", InstallationID: 42, Owner: "octocat", Name: "docs", DefaultBranch: "main",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("LoadUnpublishedArticlesByRepo() error = %v", err)
 	}
@@ -225,7 +225,7 @@ func TestLoadUnpublishedArticlesRejectsOversizedMarkdownBeforeFetchingBlob(t *te
 
 	articles, err := client.LoadUnpublishedArticlesByRepo(context.Background(), model.Repository{
 		ID: "repository-id", InstallationID: 42, Owner: "octocat", Name: "docs", DefaultBranch: "main",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("LoadUnpublishedArticlesByRepo() error = %v", err)
 	}
@@ -261,7 +261,7 @@ func TestLoadUnpublishedArticlesSkipsMarkdownWithoutCompleteFrontmatter(t *testi
 
 	articles, err := client.LoadUnpublishedArticlesByRepo(context.Background(), model.Repository{
 		ID: "repository-id", InstallationID: 42, Owner: "octocat", Name: "docs", DefaultBranch: "main",
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("LoadUnpublishedArticlesByRepo() error = %v", err)
 	}
@@ -501,4 +501,34 @@ func newTestClient(httpClient *http.Client, apiBaseURL string, appJWT func() (st
 		HTTPClient: httpClient,
 		APIBaseURL: apiBaseURL,
 	})
+}
+
+func TestLoadUnpublishedArticlesSkipsBlobFetchForKnownSHA(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app/installations/42/access_tokens":
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"token":"installation-token"}`))
+		case "/repos/octocat/docs/git/trees/main":
+			_, _ = w.Write([]byte(`{"sha":"tree-sha","truncated":false,"tree":[{"path":"guides/setup.md","mode":"100644","type":"blob","size":8,"sha":"setup-sha","url":"blob-url"}]}`))
+		default:
+			t.Errorf("unexpected fetch %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client, err := newTestClient(server.Client(), server.URL, func() (string, error) { return "signed-app-jwt", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	articles, err := client.LoadUnpublishedArticlesByRepo(context.Background(), model.Repository{
+		ID: "repository-id", InstallationID: 42, Owner: "octocat", Name: "docs", DefaultBranch: "main",
+	}, map[string]string{"guides/setup.md": "setup-sha"})
+	if err != nil {
+		t.Fatalf("LoadUnpublishedArticlesByRepo() error = %v", err)
+	}
+	if len(articles) != 1 || articles[0].SourcePath != "guides/setup.md" || articles[0].GitBlobSHA != "setup-sha" || !articles[0].Present || articles[0].Content != "" {
+		t.Fatalf("articles = %#v", articles)
+	}
 }

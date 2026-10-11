@@ -1,9 +1,9 @@
 package github
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,6 +34,10 @@ type Handler struct {
 	githubClientID   string
 	oauthCallbackURL string
 	sessionTTL       time.Duration
+
+	// SyncAfterConnect runs in the background once an installation is
+	// connected so the dashboard shows drafts without waiting for a push.
+	SyncAfterConnect func(context.Context) error
 }
 
 func NewHandler(service *Service, appSlug, appOrigin, githubClientID, oauthCallbackURL string, cookieSecure bool, sessionTTL time.Duration, logger *slog.Logger) Handler {
@@ -67,14 +71,14 @@ func (h *Handler) InstallationRedirect(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		h.logger.Error("load GitHub installation", "error", err)
-		writeError(w, http.StatusInternalServerError, "could not load GitHub installation")
+		auth.WriteError(w, http.StatusInternalServerError, "could not load GitHub installation")
 		return
 	}
 
 	configurationURL, err := installationConfigurationURL(installation)
 	if err != nil {
 		h.logger.Error("build GitHub installation configuration URL", "error", err)
-		writeError(w, http.StatusInternalServerError, "could not configure GitHub installation")
+		auth.WriteError(w, http.StatusInternalServerError, "could not configure GitHub installation")
 		return
 	}
 	http.Redirect(w, r, configurationURL, http.StatusFound)
@@ -103,7 +107,7 @@ func (h *Handler) SetupInstallation(w http.ResponseWriter, r *http.Request) {
 	}
 	installationID, err := strconv.ParseInt(r.URL.Query().Get("installation_id"), 10, 64)
 	if err != nil || installationID <= 0 {
-		writeError(w, http.StatusBadRequest, "invalid GitHub installation response")
+		auth.WriteError(w, http.StatusBadRequest, "invalid GitHub installation response")
 		return
 	}
 	h.redirectToAuth(w, r, user.ID, installationID, oauthPurposeConnectInstallation)
@@ -129,52 +133,36 @@ func (h *Handler) ConnectAccountRedirect(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *Handler) currentUser(w http.ResponseWriter, r *http.Request) (model.User, bool) {
-	cookie, err := r.Cookie(auth.SessionCookieName)
-	if err != nil || cookie.Value == "" {
-		writeError(w, http.StatusUnauthorized, "authentication required")
-		return model.User{}, false
-	}
-	user, err := h.service.UserBySession(r.Context(), auth.SessionTokenHash(cookie.Value))
-	if errors.Is(err, sql.ErrNoRows) {
-		h.clearSessionCookie(w)
-		writeError(w, http.StatusUnauthorized, "authentication required")
-		return model.User{}, false
-	}
-	if err != nil {
-		h.logger.Error("load session user", "error", err)
-		writeError(w, http.StatusInternalServerError, "could not load account")
-		return model.User{}, false
-	}
-	return user, true
+	return auth.SessionUser(w, r, true, h.cookieSecure, h.logger, h.service.UserBySession)
 }
 
 func (h *Handler) redirectToAuth(w http.ResponseWriter, r *http.Request, userID string, pendingInstallationID int64, purpose oauthPurpose) {
 	if !h.oauthStartLimiter.Allow("oauth-start") {
-		writeError(w, http.StatusTooManyRequests, "too many GitHub authorization attempts; try again later")
+		auth.WriteError(w, http.StatusTooManyRequests, "too many GitHub authorization attempts; try again later")
 		return
 	}
 
 	now := time.Now()
 	if strings.TrimSpace(h.githubClientID) == "" || strings.TrimSpace(h.oauthCallbackURL) == "" {
 		h.logger.Error("GitHub OAuth callback is not configured")
-		writeError(w, http.StatusInternalServerError, "GitHub connection is not configured")
+		auth.WriteError(w, http.StatusInternalServerError, "GitHub connection is not configured")
 		return
 	}
 	state, err := newOAuthState()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not start GitHub connection")
+		auth.WriteError(w, http.StatusInternalServerError, "could not start GitHub connection")
 		return
 	}
 	verifier, err := newOAuthState()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not start GitHub connection")
+		auth.WriteError(w, http.StatusInternalServerError, "could not start GitHub connection")
 		return
 	}
 	var loginBinding string
 	if purpose == oauthPurposeLogin {
 		loginBinding, err = newOAuthState()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "could not start GitHub connection")
+			auth.WriteError(w, http.StatusInternalServerError, "could not start GitHub connection")
 			return
 		}
 	}
@@ -190,7 +178,7 @@ func (h *Handler) redirectToAuth(w http.ResponseWriter, r *http.Request, userID 
 	}
 	if err := h.oauthAttempts.Put(state, attempt, now); err != nil {
 		h.logger.Error("store GitHub OAuth attempt", "error", err)
-		writeError(w, http.StatusServiceUnavailable, "could not start GitHub connection")
+		auth.WriteError(w, http.StatusServiceUnavailable, "could not start GitHub connection")
 		return
 	}
 	if purpose == oauthPurposeLogin {
@@ -218,13 +206,13 @@ func (h *Handler) ValidateOAuthCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if r.URL.Query().Get("error") != "" {
-		writeError(w, http.StatusForbidden, "GitHub authorization was not completed")
+		auth.WriteError(w, http.StatusForbidden, "GitHub authorization was not completed")
 		return
 	}
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		writeError(w, http.StatusBadRequest, "missing GitHub authorization response")
+		auth.WriteError(w, http.StatusBadRequest, "missing GitHub authorization response")
 		return
 	}
 	user, ok := h.currentUser(w, r)
@@ -233,14 +221,14 @@ func (h *Handler) ValidateOAuthCallback(w http.ResponseWriter, r *http.Request) 
 	}
 	attempt, err := h.oauthAttempts.Consume(user.ID, state, time.Now())
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
+		auth.WriteError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
 		return
 	}
 
 	userToken, err := h.service.ExchangeUserCode(r.Context(), code, attempt.pkceVerifier, h.oauthCallbackURL)
 	if err != nil {
 		h.logger.Error("exchange GitHub OAuth code", "error", err)
-		writeError(w, http.StatusBadGateway, "GitHub authorization failed")
+		auth.WriteError(w, http.StatusBadGateway, "GitHub authorization failed")
 		return
 	}
 	if attempt.purpose == oauthPurposeConnectAccount {
@@ -257,77 +245,86 @@ func (h *Handler) ValidateOAuthCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if attempt.purpose != oauthPurposeConnectInstallation {
-		writeError(w, http.StatusBadRequest, "invalid GitHub authorization response")
+		auth.WriteError(w, http.StatusBadRequest, "invalid GitHub authorization response")
 		return
 	}
 	canAccess, err := h.service.UserCanAccessInstallation(r.Context(), userToken, attempt.pendingInstallationID)
 	if err != nil {
 		h.logger.Error("verify GitHub user installation access", "error", err)
-		writeError(w, http.StatusBadGateway, "could not verify GitHub installation access")
+		auth.WriteError(w, http.StatusBadGateway, "could not verify GitHub installation access")
 		return
 	}
 	if !canAccess {
-		writeError(w, http.StatusForbidden, "you cannot connect this GitHub installation")
+		auth.WriteError(w, http.StatusForbidden, "you cannot connect this GitHub installation")
 		return
 	}
 
 	err = h.service.ConnectInstallation(r.Context(), user.ID, attempt.pendingInstallationID)
 	switch {
 	case errors.Is(err, model.ErrGitHubInstallationConflict):
-		writeError(w, http.StatusConflict, "this GitHub installation is already connected")
+		auth.WriteError(w, http.StatusConflict, "this GitHub installation is already connected")
 	case err != nil:
 		h.logger.Error("connect github installation", "error", err)
-		writeError(w, http.StatusInternalServerError, "could not connect GitHub installation")
+		auth.WriteError(w, http.StatusInternalServerError, "could not connect GitHub installation")
 	default:
+		if h.SyncAfterConnect != nil {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				defer cancel()
+				if err := h.SyncAfterConnect(ctx); err != nil {
+					h.logger.Error("sync articles after connecting installation", "error", err)
+				}
+			}()
+		}
 		http.Redirect(w, r, h.successURL, http.StatusFound)
 	}
 }
 
 func (h *Handler) ValidateLoginCallback(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("error") != "" {
-		writeError(w, http.StatusForbidden, "GitHub authorization was not completed")
+		auth.WriteError(w, http.StatusForbidden, "GitHub authorization was not completed")
 		return
 	}
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
 	if code == "" || state == "" {
-		writeError(w, http.StatusBadRequest, "missing GitHub authorization response")
+		auth.WriteError(w, http.StatusBadRequest, "missing GitHub authorization response")
 		return
 	}
 	binding, err := r.Cookie(loginBindingCookieName)
 	if err != nil || binding.Value == "" {
-		writeError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
+		auth.WriteError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
 		return
 	}
 	attempt, err := h.oauthAttempts.ConsumeLogin(state, binding.Value, time.Now())
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
+		auth.WriteError(w, http.StatusBadRequest, "invalid or expired GitHub authorization response")
 		return
 	}
 	userToken, err := h.service.ExchangeUserCode(r.Context(), code, attempt.pkceVerifier, h.oauthCallbackURL)
 	if err != nil {
 		h.logger.Error("exchange GitHub login code", "error", err)
-		writeError(w, http.StatusBadGateway, "GitHub authorization failed")
+		auth.WriteError(w, http.StatusBadGateway, "GitHub authorization failed")
 		return
 	}
 	token, tokenHash, err := auth.NewSessionToken()
 	if err != nil {
 		h.logger.Error("create GitHub login session", "error", err)
-		writeError(w, http.StatusInternalServerError, "login failed")
+		auth.WriteError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
 	expiresAt := time.Now().Add(h.sessionTTL)
 	user, err := h.service.LoginWithGitHub(r.Context(), userToken, tokenHash, expiresAt)
 	if errors.Is(err, model.ErrGitHubUsernameTaken) {
-		writeError(w, http.StatusConflict, "a SourceInk account already uses this GitHub username; sign in with that account first")
+		auth.WriteError(w, http.StatusConflict, "a SourceInk account already uses this GitHub username; sign in with that account first")
 		return
 	}
 	if err != nil {
 		h.logger.Error("complete GitHub login", "error", err)
-		writeError(w, http.StatusInternalServerError, "GitHub login failed")
+		auth.WriteError(w, http.StatusInternalServerError, "GitHub login failed")
 		return
 	}
-	h.setLoginSessionCookie(w, token, expiresAt)
+	auth.SetSessionCookie(w, token, expiresAt, h.cookieSecure)
 	installed, refreshErr := h.service.RefreshInstallationForUser(r.Context(), user.ID)
 	if refreshErr != nil {
 		h.logger.Error("refresh GitHub installation after login", "error", refreshErr)
@@ -339,30 +336,4 @@ func (h *Handler) ValidateLoginCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	http.Redirect(w, r, h.loginSuccessURL, http.StatusFound)
-}
-
-func (h *Handler) setLoginSessionCookie(w http.ResponseWriter, token string, expiresAt time.Time) {
-	http.SetCookie(w, &http.Cookie{Name: auth.SessionCookieName, Value: token, Path: "/", Expires: expiresAt, MaxAge: int(time.Until(expiresAt).Seconds()), HttpOnly: true, Secure: h.cookieSecure, SameSite: http.SameSiteLaxMode})
-}
-
-func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.SessionCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   h.cookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
-}
-
-func writeError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
-}
-
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(value)
 }

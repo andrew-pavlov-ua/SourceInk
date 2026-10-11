@@ -18,6 +18,7 @@ const maxWebhookBodyBytes = 1 << 20
 type webhookDeliveryStore interface {
 	RecordGitHubWebhookDelivery(ctx context.Context, deliveryID, event string, installationID, repositoryID int64) (bool, error)
 	CompleteGitHubWebhookDelivery(ctx context.Context, deliveryID string, processingErr error) error
+	SetInstallationSuspended(ctx context.Context, installationID int64, suspended bool) error
 }
 
 type repositorySync func(context.Context, int64, int64) error
@@ -73,7 +74,12 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing GitHub webhook headers", http.StatusBadRequest)
 		return
 	}
-	if event != "push" {
+	switch event {
+	case "push":
+	case "installation":
+		h.handleInstallation(w, r, body)
+		return
+	default:
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -105,6 +111,37 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	go h.process(deliveryID, payload.Installation.ID, payload.Repository.ID)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// handleInstallation stops syncing an installation the user removed or GitHub
+// suspended. The update is idempotent, so redeliveries need no dedup record.
+func (h *WebhookHandler) handleInstallation(w http.ResponseWriter, r *http.Request, body []byte) {
+	var payload struct {
+		Action       string `json:"action"`
+		Installation struct {
+			ID int64 `json:"id"`
+		} `json:"installation"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || payload.Installation.ID <= 0 {
+		http.Error(w, "invalid installation webhook payload", http.StatusBadRequest)
+		return
+	}
+	var suspended bool
+	switch payload.Action {
+	case "deleted", "suspend":
+		suspended = true
+	case "unsuspend":
+		suspended = false
+	default:
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err := h.store.SetInstallationSuspended(r.Context(), payload.Installation.ID, suspended); err != nil {
+		h.logger.Error("update installation from webhook", "error", err, "installation_id", payload.Installation.ID, "action", payload.Action)
+		http.Error(w, "could not update installation", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *WebhookHandler) process(deliveryID string, installationID, repositoryID int64) {

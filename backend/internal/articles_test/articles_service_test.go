@@ -13,7 +13,7 @@ import (
 type serviceTestStore struct {
 	published           []model.Article
 	unpublished         []model.UnpublishedArticle
-	userRepositories    []model.Repository
+	storedByRepoID      map[string][]model.UnpublishedArticle
 	syncRepositories    []model.Repository
 	webhookRepository   model.Repository
 	upsertedSourcePath  []string
@@ -45,8 +45,8 @@ func (s *serviceTestStore) ListUserUnpublishedArticles(context.Context, string) 
 	return s.unpublished, nil
 }
 
-func (s *serviceTestStore) ListRepositoriesForUser(context.Context, string) ([]model.Repository, error) {
-	return s.userRepositories, nil
+func (s *serviceTestStore) ListUnpublishedArticlesByRepository(_ context.Context, repositoryID string) ([]model.UnpublishedArticle, error) {
+	return s.storedByRepoID[repositoryID], nil
 }
 
 func (s *serviceTestStore) ListRepositoriesForArticleSync(context.Context) ([]model.Repository, error) {
@@ -101,16 +101,23 @@ func (s *serviceTestStore) AutoPublishArticle(_ context.Context, draftID, gitBlo
 type serviceTestLoader struct {
 	loadedRepositories []model.Repository
 	articlesByRepoID   map[string][]model.UnpublishedArticle
+	knownBlobSHAs      map[string]string
 	err                error
+	errByRepoID        map[string]error
 }
 
 func (l *serviceTestLoader) LoadUnpublishedArticlesByRepo(
 	_ context.Context,
 	repository model.Repository,
+	knownBlobSHAs map[string]string,
 ) ([]model.UnpublishedArticle, error) {
 	l.loadedRepositories = append(l.loadedRepositories, repository)
+	l.knownBlobSHAs = knownBlobSHAs
 	if l.err != nil {
 		return nil, l.err
+	}
+	if err := l.errByRepoID[repository.ID]; err != nil {
+		return nil, err
 	}
 	return l.articlesByRepoID[repository.ID], nil
 }
@@ -138,92 +145,17 @@ func TestListForUserReturnsStoredArticlesWithoutRediscovery(t *testing.T) {
 	}
 }
 
-func TestListForUserDiscoversAndSavesArticlesWhenStorageIsEmpty(t *testing.T) {
-	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
-	store := &serviceTestStore{userRepositories: []model.Repository{repository}}
-	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
-		repository.ID: {{RepositoryID: repository.ID, SourcePath: "guides/setup.md"}},
-	}}
-	service := articles.NewService(store, loader)
-
-	articles, err := service.ListForUser(context.Background(), "user-id")
-	if err != nil {
-		t.Fatalf("ListForUser() error = %v", err)
-	}
-	if len(loader.loadedRepositories) != 1 || loader.loadedRepositories[0].ID != repository.ID {
-		t.Fatalf("loaded repositories = %#v", loader.loadedRepositories)
-	}
-	if len(store.upsertedSourcePath) != 1 || store.upsertedSourcePath[0] != "guides/setup.md" {
-		t.Fatalf("upserted paths = %#v", store.upsertedSourcePath)
-	}
-	if len(articles.UnpublishedArticles) != 1 || articles.UnpublishedArticles[0].ID != "saved-guides/setup.md" {
-		t.Fatalf("unpublished articles = %#v", articles.UnpublishedArticles)
-	}
-	if articles.UnpublishedArticles[0].ValidationError == nil {
-		t.Fatal("discovered invalid draft has no validation warning")
-	}
-	if store.reconcileCalls != 1 {
-		t.Fatalf("duplicate slug checks = %d, want 1", store.reconcileCalls)
-	}
-}
-
-func TestListForUserAutomaticallyPublishesDiscoveredAutoArticles(t *testing.T) {
-	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
-	store := &serviceTestStore{
-		userRepositories:  []model.Repository{repository},
-		autoPublishDraft:  publishableDraft("auto"),
-		autoPublishResult: model.Article{ID: "article-id"},
-	}
-	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
-		repository.ID: {{
-			RepositoryID: repository.ID,
-			SourcePath:   "automatic.md",
-			Frontmatter:  model.Frontmatter{Title: "Automatic", Slug: "automatic", PublishMode: "auto"},
-			GitBlobSHA:   "blob-sha",
-			Present:      true,
-		}},
-	}}
-	service := articles.NewService(store, loader)
-
-	if _, err := service.ListForUser(context.Background(), "user-id"); err != nil {
-		t.Fatalf("ListForUser() error = %v", err)
-	}
-	if store.autoPublishCalls != 1 || store.autoPublishDraftID != "saved-automatic.md" {
-		t.Fatalf("ListForUser() auto-publish call = count:%d draft:%q", store.autoPublishCalls, store.autoPublishDraftID)
-	}
-}
-
-func TestRunOnceUsesSharedDiscovery(t *testing.T) {
-	repository := model.Repository{ID: "repository-id", FullName: "octocat/docs"}
-	store := &serviceTestStore{syncRepositories: []model.Repository{repository}}
-	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
-		repository.ID: {{RepositoryID: repository.ID, SourcePath: "README.md"}},
-	}}
-	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
-
-	articles, err := worker.RunOnce(context.Background())
-	if err != nil {
-		t.Fatalf("RunOnce() error = %v", err)
-	}
-	if len(articles) != 1 || articles[0].SourcePath != "README.md" {
-		t.Fatalf("RunOnce() = %#v", articles)
-	}
-	if len(loader.loadedRepositories) != 1 || loader.loadedRepositories[0].ID != repository.ID {
-		t.Fatalf("loaded repositories = %#v", loader.loadedRepositories)
-	}
-}
-
-func TestDiscoverIncludesRepositoryNameInLoaderError(t *testing.T) {
+func TestSyncIncludesRepositoryNameInLoaderError(t *testing.T) {
 	wantErr := errors.New("GitHub unavailable")
-	store := &serviceTestStore{userRepositories: []model.Repository{{FullName: "octocat/docs"}}}
-	service := articles.NewService(store, &serviceTestLoader{err: wantErr})
+	store := &serviceTestStore{syncRepositories: []model.Repository{{ID: "repository-id", FullName: "octocat/docs"}}}
+	worker := articles.NewArticlesWorker(articles.NewService(store, &serviceTestLoader{err: wantErr}))
 
-	_, err := service.ListForUser(context.Background(), "user-id")
+	_, err := worker.SyncOnce(context.Background())
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("discover() error = %v, want %v", err, wantErr)
+		t.Fatalf("SyncOnce() error = %v, want %v", err, wantErr)
 	}
-	if got := err.Error(); got != "load unpublished articles from octocat/docs: GitHub unavailable" {
-		t.Fatalf("discover() error = %q", got)
+	if got := err.Error(); got != "sync repository octocat/docs: load unpublished articles from octocat/docs: GitHub unavailable" {
+		t.Fatalf("SyncOnce() error = %q", got)
 	}
 }
 

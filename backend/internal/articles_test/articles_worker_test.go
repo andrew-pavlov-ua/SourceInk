@@ -3,6 +3,7 @@ package articles_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	articles "sourceink/backend/internal/articles"
@@ -98,5 +99,50 @@ func TestSyncOnceStopsBeforeAutoPublishWhenSlugValidationFails(t *testing.T) {
 	}
 	if store.autoPublishCalls != 0 {
 		t.Fatalf("auto-publish calls = %d, want 0", store.autoPublishCalls)
+	}
+}
+
+func TestSyncOnceContinuesPastAFailingRepository(t *testing.T) {
+	broken := model.Repository{ID: "broken", FullName: "octocat/revoked"}
+	healthy := model.Repository{ID: "healthy", FullName: "octocat/docs"}
+	store := &serviceTestStore{syncRepositories: []model.Repository{broken, healthy}}
+	loader := &serviceTestLoader{
+		errByRepoID:      map[string]error{broken.ID: errors.New("installation revoked")},
+		articlesByRepoID: map[string][]model.UnpublishedArticle{healthy.ID: {{RepositoryID: healthy.ID, SourcePath: "README.md"}}},
+	}
+	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
+
+	articles, err := worker.SyncOnce(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "octocat/revoked") {
+		t.Fatalf("SyncOnce() error = %v, want the broken repository reported", err)
+	}
+	if len(articles) != 1 || len(store.upsertedSourcePath) != 1 || store.reconcileCalls != 1 {
+		t.Fatalf("healthy repository was not synced: articles=%#v upserts=%#v reconcile=%d", articles, store.upsertedSourcePath, store.reconcileCalls)
+	}
+}
+
+func TestSyncRepositoryReusesStoredDraftForUnchangedBlob(t *testing.T) {
+	repository := model.Repository{ID: "repository-id", InstallationID: 44, GitHubID: 99, FullName: "octocat/docs"}
+	stored := model.UnpublishedArticle{ID: "stored-id", RepositoryID: repository.ID, SourcePath: "README.md", GitBlobSHA: "blob", Content: "# stored", Present: true}
+	store := &serviceTestStore{
+		webhookRepository: repository,
+		storedByRepoID:    map[string][]model.UnpublishedArticle{repository.ID: {stored}},
+	}
+	loader := &serviceTestLoader{articlesByRepoID: map[string][]model.UnpublishedArticle{
+		repository.ID: {{RepositoryID: repository.ID, SourcePath: "README.md", GitBlobSHA: "blob", Present: true}},
+	}}
+	worker := articles.NewArticlesWorker(articles.NewService(store, loader))
+
+	if err := worker.SyncRepository(context.Background(), 44, 99); err != nil {
+		t.Fatalf("SyncRepository() error = %v", err)
+	}
+	if loader.knownBlobSHAs["README.md"] != "blob" {
+		t.Fatalf("loader known SHAs = %#v", loader.knownBlobSHAs)
+	}
+	if len(store.upsertedSourcePath) != 0 {
+		t.Fatalf("unchanged draft was upserted: %#v", store.upsertedSourcePath)
+	}
+	if len(store.missingPaths) != 1 || store.missingPaths[0] != "README.md" {
+		t.Fatalf("present paths = %#v", store.missingPaths)
 	}
 }

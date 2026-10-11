@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"sourceink/backend/internal/auth"
 	"sourceink/backend/internal/model"
 )
 
@@ -32,7 +33,7 @@ func (h *Handler) GetReviewSummary(w http.ResponseWriter, r *http.Request) {
 		h.writeReviewError(w, r, "get review summary", articleID, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summary)
+	auth.WriteJSON(w, http.StatusOK, summary)
 }
 
 func (h *Handler) CreateReview(w http.ResponseWriter, r *http.Request) {
@@ -45,11 +46,11 @@ func (h *Handler) CreateReview(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(io.LimitReader(r.Body, maxReviewRequestBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
-		writeError(w, http.StatusBadRequest, "Review request must be valid JSON")
+		auth.WriteError(w, http.StatusBadRequest, "Review request must be valid JSON")
 		return
 	}
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		writeError(w, http.StatusBadRequest, "Review request must contain one JSON object")
+		auth.WriteError(w, http.StatusBadRequest, "Review request must contain one JSON object")
 		return
 	}
 
@@ -71,7 +72,7 @@ func (h *Handler) CreateReview(w http.ResponseWriter, r *http.Request) {
 		h.writeReviewError(w, r, "reload review summary", articleID, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summary)
+	auth.WriteJSON(w, http.StatusOK, summary)
 }
 
 func (h *Handler) DeleteReview(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +93,7 @@ func (h *Handler) DeleteReview(w http.ResponseWriter, r *http.Request) {
 		h.writeReviewError(w, r, "reload review summary", articleID, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, summary)
+	auth.WriteJSON(w, http.StatusOK, summary)
 }
 
 func (h *Handler) writeReviewError(
@@ -104,13 +105,13 @@ func (h *Handler) writeReviewError(
 ) {
 	switch {
 	case errors.Is(err, model.ErrArticleReviewInvalid):
-		writeError(w, http.StatusUnprocessableEntity, err.Error())
+		auth.WriteError(w, http.StatusUnprocessableEntity, err.Error())
 	case errors.Is(err, model.ErrArticleReviewStale):
-		writeError(w, http.StatusConflict, "A newer article revision is available. Refresh before reviewing.")
+		auth.WriteError(w, http.StatusConflict, "A newer article revision is available. Refresh before reviewing.")
 	case errors.Is(err, model.ErrPublishedArticleNotFound), errors.Is(err, model.ErrArticleReviewNotFound):
-		writeError(w, http.StatusNotFound, err.Error())
+		auth.WriteError(w, http.StatusNotFound, err.Error())
 	default:
 		h.logger.Error(operation, "article_id", articleID, "path", r.URL.Path, "error", err)
-		writeError(w, http.StatusInternalServerError, "SourceInk couldn't update this review")
+		auth.WriteError(w, http.StatusInternalServerError, "SourceInk couldn't update this review")
 	}
 }

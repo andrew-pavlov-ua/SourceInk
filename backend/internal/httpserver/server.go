@@ -54,6 +54,10 @@ func New(cfg config.Config, db *sqlx.DB, logger *slog.Logger) (http.Handler, *ar
 
 	articlesService := articles.NewService(store, githubClient)
 	articlesWorker := articles.NewArticlesWorker(articlesService)
+	githubHandler.SyncAfterConnect = func(ctx context.Context) error {
+		_, err := articlesWorker.SyncOnce(ctx)
+		return err
+	}
 	githubWebhookHandler := github.NewWebhookHandler(cfg.GitHubWebhookSecret, store, articlesWorker.SyncRepository, logger)
 	apiService := apiService.NewService(store, articlesService)
 	apiHandler := apiHandler.NewHandler(&apiService, cfg.CookieSecure, logger)

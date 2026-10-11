@@ -82,12 +82,16 @@ export type UserArticles = {
 
 export const SESSION_COOKIE_NAME = "sourceink_session";
 
-export async function getCurrentUser(cookieHeader: string): Promise<User | null> {
+function apiFetch(path: string, cookieHeader = "") {
   const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
-  const response = await fetch(`${baseURL}/api/auth/me`, {
-    headers: { cookie: cookieHeader },
+  return fetch(`${baseURL}${path}`, {
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
   });
+}
+
+export async function getCurrentUser(cookieHeader: string): Promise<User | null> {
+  const response = await apiFetch(`/api/auth/me`, cookieHeader);
   if (response.status === 401) return null;
   if (!response.ok) throw new Error(`account lookup failed with status ${response.status}`);
   const body = (await response.json()) as { user: User };
@@ -95,11 +99,7 @@ export async function getCurrentUser(cookieHeader: string): Promise<User | null>
 }
 
 export async function getRepositories(cookieHeader: string): Promise<Repository[]> {
-  const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
-  const response = await fetch(`${baseURL}/api/repos`, {
-    headers: { cookie: cookieHeader },
-    cache: "no-store",
-  });
+  const response = await apiFetch(`/api/repos`, cookieHeader);
   if (!response.ok) throw new Error(`repository lookup failed with status ${response.status}`);
   const body: unknown = await response.json();
   if (body === null) return [];
@@ -108,11 +108,7 @@ export async function getRepositories(cookieHeader: string): Promise<Repository[
 }
 
 export async function getArticles(cookieHeader: string): Promise<UserArticles> {
-  const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
-  const response = await fetch(`${baseURL}/api/articles`, {
-    headers: { cookie: cookieHeader },
-    cache: "no-store",
-  });
+  const response = await apiFetch(`/api/articles`, cookieHeader);
   if (!response.ok) throw new Error(`article lookup failed with status ${response.status}`);
 
   const body: unknown = await response.json();
@@ -124,11 +120,7 @@ export async function getArticles(cookieHeader: string): Promise<UserArticles> {
 }
 
 export async function getPublishedArticles(cookieHeader = "", order: PublishedArticleOrder = "newest"): Promise<ReviewedPublishedArticle[]> {
-  const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
-  const response = await fetch(`${baseURL}/api/published-articles?sort=${encodeURIComponent(order)}`, {
-    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-    cache: "no-store",
-  });
+  const response = await apiFetch(`/api/published-articles?sort=${encodeURIComponent(order)}`, cookieHeader);
   if (!response.ok) throw new Error(`published article lookup failed with status ${response.status}`);
 
   const body: unknown = await response.json();
@@ -141,11 +133,7 @@ export async function getPublishedArticles(cookieHeader = "", order: PublishedAr
 }
 
 export async function getPublishedArticle(slug: string, cookieHeader = ""): Promise<ReviewedPublishedArticle | null> {
-  const baseURL = process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080";
-  const response = await fetch(`${baseURL}/api/published-articles/${encodeURIComponent(slug)}`, {
-    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-    cache: "no-store",
-  });
+  const response = await apiFetch(`/api/published-articles/${encodeURIComponent(slug)}`, cookieHeader);
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`published article lookup failed with status ${response.status}`);
 

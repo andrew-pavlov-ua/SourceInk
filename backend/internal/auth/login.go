@@ -17,18 +17,18 @@ type loginRequest struct {
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var input loginRequest
 	if err := decodeJSON(w, r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	email := strings.ToLower(strings.TrimSpace(input.Email))
 	if !h.loginLimiter.Allow(clientIP(r) + "|" + email) {
-		writeError(w, http.StatusTooManyRequests, "too many login attempts; try again later")
+		WriteError(w, http.StatusTooManyRequests, "too many login attempts; try again later")
 		return
 	}
 	releasePasswordWork, ok := h.beginPasswordWork()
 	if !ok {
-		writeError(w, http.StatusTooManyRequests, "too many login attempts; try again later")
+		WriteError(w, http.StatusTooManyRequests, "too many login attempts; try again later")
 		return
 	}
 	defer releasePasswordWork()
@@ -40,33 +40,33 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		storedHash = h.dummyPasswordHash
 	} else if err != nil {
 		h.logger.Error("find login user", "error", err)
-		writeError(w, http.StatusInternalServerError, "login failed")
+		WriteError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
 
 	passwordMatches, err := VerifyPassword(input.Password, storedHash)
 	if err != nil {
 		h.logger.Error("verify password", "error", err)
-		writeError(w, http.StatusInternalServerError, "login failed")
+		WriteError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
 	if !userExists || !passwordMatches {
-		writeError(w, http.StatusUnauthorized, invalidCredentialsMessage)
+		WriteError(w, http.StatusUnauthorized, invalidCredentialsMessage)
 		return
 	}
 
 	session, err := newSession(h.sessionTTL)
 	if err != nil {
 		h.logger.Error("create login token", "error", err)
-		writeError(w, http.StatusInternalServerError, "login failed")
+		WriteError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
 	if err := h.store.CreateSession(r.Context(), user.ID, session.tokenHash, session.expiresAt); err != nil {
 		h.logger.Error("persist login session", "error", err, "user_id", user.ID)
-		writeError(w, http.StatusInternalServerError, "login failed")
+		WriteError(w, http.StatusInternalServerError, "login failed")
 		return
 	}
 
-	h.setSessionCookie(w, session)
-	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+	SetSessionCookie(w, session.token, session.expiresAt, h.cookieSecure)
+	WriteJSON(w, http.StatusOK, map[string]any{"user": user})
 }

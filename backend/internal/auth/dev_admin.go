@@ -62,35 +62,23 @@ func ensureDevelopmentAccount(ctx context.Context, db *sqlx.DB, environment, ema
 
 	switch len(matches) {
 	case 0:
-		if role == "admin" {
-			_, err = tx.ExecContext(ctx, `
-				insert into users (email, username, password_hash, role)
-				values ($1, $2, $3, 'admin')
-			`, email, username, passwordHash)
-		} else {
-			_, err = tx.ExecContext(ctx, `
-				insert into users (email, username, password_hash)
-				values ($1, $2, $3)
-			`, email, username, passwordHash)
-		}
+		_, err = tx.ExecContext(ctx, `
+			insert into users (email, username, password_hash, role)
+			values ($1, $2, $3, $4)
+		`, email, username, passwordHash, role)
 	case 1:
 		existing := matches[0]
 		if !strings.EqualFold(existing.Email, email) || !strings.EqualFold(existing.Username, username) {
 			return fmt.Errorf("development %s email or username conflicts with another account", role)
 		}
-		if refreshRole {
-			_, err = tx.ExecContext(ctx, `
-				update users
-				set password_hash = $2, role = 'admin', updated_at = now()
-				where id = $1
-			`, existing.ID, passwordHash)
-		} else {
-			_, err = tx.ExecContext(ctx, `
-				update users
-				set password_hash = $2, updated_at = now()
-				where id = $1
-			`, existing.ID, passwordHash)
-		}
+		// only the admin seed may change an existing account's role
+		_, err = tx.ExecContext(ctx, `
+			update users
+			set password_hash = $2,
+				role = case when $3 then 'admin' else role end,
+				updated_at = now()
+			where id = $1
+		`, existing.ID, passwordHash, refreshRole)
 	default:
 		return fmt.Errorf("development %s email and username conflict with separate accounts", role)
 	}

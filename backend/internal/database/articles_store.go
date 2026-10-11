@@ -405,13 +405,13 @@ func (s *Store) ListUserUnpublishedArticles(ctx context.Context, userID string) 
 	if userID == "" {
 		return nil, errors.New("user ID is required")
 	}
+	return s.listDrafts(ctx, "where gi.user_id = $1\norder by ua.updated_at desc, ua.id", userID)
+}
 
+func (s *Store) listDrafts(ctx context.Context, filter string, args ...any) ([]model.UnpublishedArticle, error) {
 	articles := make([]model.UnpublishedArticle, 0)
-	err := s.db.SelectContext(ctx, &articles, "select "+draftColumns+draftFrom+`
-		where gi.user_id = $1
-		order by ua.updated_at desc, ua.id`, userID)
-	if err != nil {
-		return nil, fmt.Errorf("list unpublished articles for user %s: %w", userID, err)
+	if err := s.db.SelectContext(ctx, &articles, "select "+draftColumns+draftFrom+"\n"+filter, args...); err != nil {
+		return nil, fmt.Errorf("list unpublished articles: %w", err)
 	}
 	return articles, nil
 }
@@ -486,4 +486,11 @@ func (s *Store) publishDraft(
 		return model.Article{}, fmt.Errorf("%s article %s: %w", operation, draftID, err)
 	}
 	return article, nil
+}
+
+func (s *Store) ListUnpublishedArticlesByRepository(ctx context.Context, repositoryID string) ([]model.UnpublishedArticle, error) {
+	if repositoryID == "" {
+		return nil, errors.New("repository ID is required")
+	}
+	return s.listDrafts(ctx, "where ua.repository_id = $1", repositoryID)
 }

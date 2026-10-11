@@ -56,46 +56,33 @@ func runOnInterval(ctx context.Context, interval time.Duration, run func() error
 	}
 }
 
-func (w *ArticlesWorker) RunOnce(ctx context.Context) ([]model.UnpublishedArticle, error) {
-	if w.service == nil || w.service.loader == nil {
-		return nil, errors.New("articles worker is not configured")
-	}
-
-	return w.service.discoverForSync(ctx)
-}
-
+// SyncOnce reconciles every connected repository. Repository failures are
+// collected and returned together so one revoked installation cannot stall
+// the others.
 func (w *ArticlesWorker) SyncOnce(ctx context.Context) ([]model.UnpublishedArticle, error) {
-	if w.service == nil || w.service.loader == nil {
-		return nil, errors.New("articles worker is not configured")
-	}
 	repositories, err := w.service.store.ListRepositoriesForArticleSync(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list repositories for article sync: %w", err)
 	}
 
 	unpublishedArticles := make([]model.UnpublishedArticle, 0)
+	var errs []error
 	for _, repository := range repositories {
 		repositoryArticles, err := w.syncRepository(ctx, repository)
 		if err != nil {
-			return nil, fmt.Errorf("sync repository %s: %w", repository.FullName, err)
+			errs = append(errs, fmt.Errorf("sync repository %s: %w", repository.FullName, err))
+			continue
 		}
 		unpublishedArticles = append(unpublishedArticles, repositoryArticles...)
 	}
-	if err := w.service.store.ReconcileDuplicateSlugs(ctx); err != nil {
-		return nil, fmt.Errorf("validate article slugs: %w", err)
-	}
-	if err := w.service.AutoPublishArticles(ctx, unpublishedArticles); err != nil {
+	if err := w.publish(ctx, unpublishedArticles); err != nil {
 		return nil, err
 	}
-
-	return unpublishedArticles, nil
+	return unpublishedArticles, errors.Join(errs...)
 }
 
 // SyncRepository handles a verified push for one connected repository.
 func (w *ArticlesWorker) SyncRepository(ctx context.Context, installationID, githubRepositoryID int64) error {
-	if w.service == nil || w.service.loader == nil {
-		return errors.New("articles worker is not configured")
-	}
 	repository, err := w.service.store.RepositoryForWebhookSync(ctx, installationID, githubRepositoryID)
 	if err != nil {
 		return fmt.Errorf("find repository for webhook sync: %w", err)
@@ -104,13 +91,15 @@ func (w *ArticlesWorker) SyncRepository(ctx context.Context, installationID, git
 	if err != nil {
 		return fmt.Errorf("sync repository %s: %w", repository.FullName, err)
 	}
+	return w.publish(ctx, unpublishedArticles)
+}
+
+// publish runs the cross-repository slug check, then auto-publishes valid drafts.
+func (w *ArticlesWorker) publish(ctx context.Context, unpublishedArticles []model.UnpublishedArticle) error {
 	if err := w.service.store.ReconcileDuplicateSlugs(ctx); err != nil {
 		return fmt.Errorf("validate article slugs: %w", err)
 	}
-	if err := w.service.AutoPublishArticles(ctx, unpublishedArticles); err != nil {
-		return err
-	}
-	return nil
+	return w.service.AutoPublishArticles(ctx, unpublishedArticles)
 }
 
 func (w *ArticlesWorker) syncRepository(ctx context.Context, repository model.Repository) ([]model.UnpublishedArticle, error) {
